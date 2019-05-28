@@ -170,7 +170,7 @@ class RandomIndicesIterator(AbstractIndicesIterator):
             indices = next(self.batch_iter)
         except StopIteration:
             self.epochs_seen += 1
-            if isinstance(self.num_epochs, int) and self.epochs_seen+1 >= self.num_epochs:
+            if isinstance(self.num_epochs, int) and self.epochs_seen >= self.num_epochs:
                 raise StopIteration
             self.sample_iter = iter(self.sampler)
             self.set_batch_iter(self.batch_size)
