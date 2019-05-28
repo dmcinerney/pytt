@@ -71,7 +71,7 @@ class AbstractBatchIterator:
         """
         raise NotImplementedError
 
-def AbstractInstance:
+class AbstractInstance:
     """
     Handles preprocessing of raw datapoint, holding all information needed on a datapoint
 
@@ -86,12 +86,13 @@ def AbstractInstance:
             1) raw datapoint
 
         IMPORTANT NOTE: this needs to create two object attributes:
-            1) self.raw_datapoint - a reference to the raw datapoint
-            2) self.processed_datapoint - a processed dictionary of tensors
+            1) self.datapoint - a reference to the raw datapoint and any other information
+                that it is necessary to keep around
+            2) self.input - a processed dictionary of tensors
         """
         raise NotImplementedError
 
-def AbstractBatch:
+class AbstractBatch:
     """
     Handles collecting instances into a batch
 
@@ -106,8 +107,9 @@ def AbstractBatch:
             1) list of instances
 
         IMPORTANT NOTE: this needs to create two object attributes:
-            1) self.raw_datapoints - a reference to the raw datapoints
-            2) self.processed_datapoints - a processed dictionary of tensors
+            1) self.datapoints - a reference to the raw datapoints and any other information
+                that it is necessary to keep around
+            2) self.inputs - a processed dictionary of tensors
         """
         raise NotImplementedError
 
@@ -124,7 +126,10 @@ def AbstractBatch:
         raise NotImplementedError
 
     def __len__(self):
-        return len(self.raw_datapoints)
+        """
+        Returns the number of datapoints in the batch
+        """
+        return len(self.datapoints)
 
     def to(self, device):
         """

@@ -1,14 +1,14 @@
-from abstract_batcher import AbstractBatcher,
-                             AbstractBatchIterator,
-                             AbstractInstance,
-                             AbstractBatch,
-                             AbstractIndicesIterator
+from batching.abstract_batcher import AbstractBatcher,\
+                                      AbstractBatchIterator,\
+                                      AbstractInstance,\
+                                      AbstractBatch,\
+                                      AbstractIndicesIterator
 import torch
-from torch.utils.data import Dataset,
-                             DataLoader,
-                             Sampler,
-                             SequentialSampler,
-                             RandomSampler,
+from torch.utils.data import Dataset,\
+                             DataLoader,\
+                             Sampler,\
+                             SequentialSampler,\
+                             RandomSampler,\
                              BatchSampler
 import copy
 
@@ -227,33 +227,30 @@ class IteratorWrapper(Sampler):
     def __len__(self):
         return len(self.iterator)
 
-def StandardInstance(AbstractInstance):
+class StandardInstance(AbstractInstance):
     """
     Implementation of an AbstractInstance that does no processing
 
     All functions without comments are described in the superclass.
     """
     def __init__(self, raw_datapoint):
-        self.raw_datapoint = raw_datapoint
-        self.processed_datapoint = raw_datapoint
+        self.datapoint = raw_datapoint
+        self.input = raw_datapoint
 
-def StandardBatch(AbstractBatch):
+class StandardBatch(AbstractBatch):
     """
     Implementation of a simple AbstractBatch
 
     All functions without comments are described in the superclass.
     """
     def __init__(self, instances):
-        self.raw_datapoints = [instance.raw_datapoint for instance in instances]
-        self.processed_datapoints = {k:pad_and_concat((instance.processed_datapoint[k] for instance in instances))
-                                     for k in instance[0].processed_datapoints.keys()}
+        self.datapoints = [instance.datapoint for instance in instances]
+        self.inputs = {k:pad_and_concat((instance.input[k] for instance in instances))
+                       for k in instance[0].input.keys()}
 
     def split(self, n):
         # TODO: implement this
         raise NotImplementedError
-
-    def __len__(self):
-        return len(self.raw_datapoints)
 
     def to(self, device):
         # TODO: implement this

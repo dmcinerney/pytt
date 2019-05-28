@@ -15,7 +15,7 @@ class RawDataset:
         """
         Returns the element at index index in the dataset
         """
-        return self.df.iloc[index]
+        return dict(self.df.iloc[index])
         
     def __len__(self):
         """
