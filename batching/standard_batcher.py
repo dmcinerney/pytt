@@ -11,6 +11,7 @@ from torch.utils.data import Dataset,\
                              SequentialSampler,\
                              RandomSampler
 import copy
+import queue
 
 class StandardBatcher(AbstractBatcher):
     """
@@ -32,16 +33,16 @@ class StandardBatcher(AbstractBatcher):
         # TODO: implement this
         raise NotImplementedError
 
-    def batch_iterator(self, dataset, batch_size, indices_iterator=None, num_workers=0, random=False, epochs=None, iterations=None):
+    def batch_iterator(self, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0):
         return StandardBatchIterator(
             self,
             dataset,
-            batch_size,
-            indices_iterator=indices_iterator,
-            num_workers=num_workers,
+            batch_size=batch_size,
             random=random,
             epochs=epochs,
-            iterations=iterations
+            iterations=iterations,
+            indices_iterator=indices_iterator,
+            num_workers=num_workers,
         )
 
 class StandardBatchIterator(AbstractBatchIterator):
@@ -55,23 +56,24 @@ class StandardBatchIterator(AbstractBatchIterator):
 
     All functions without comments are described in the superclass.
     """
-    def __init__(self, batcher, dataset, batch_size, indices_iterator=None, num_workers=0, random=None, epochs=None, iterations=None):
+    def __init__(self, batcher, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0):
         dataset = DatasetWrapper(dataset, batcher)
         if indices_iterator is not None:
-            if random is not None or epochs is not None or iterations is not None:
+            if batch_size is not None or random is not None or epochs is not None or iterations is not None:
                 raise Exception
             self.indices_iterator = indices_iterator
         else:
+            if batch_size is None:
+                raise Exception
             if random:
                 self.indices_iterator = RandomIndicesIterator(len(dataset), batch_size, epochs=epochs, iterations=iterations)
             else:
                 self.indices_iterator = SequentialIndicesIterator(len(dataset), batch_size)
-        # TODO: change back to not an attribute
-        self.indices_iterator_copy = copy.deepcopy(self.indices_iterator)
+        self.wrapped_indices_iterator = IteratorQueueWrapper(copy.deepcopy(self.indices_iterator))
         self.dataloaderiter = iter(DataLoader(
             dataset,
-            batch_sampler=self.indices_iterator_copy,
-            collate_fn=lambda instances: StandardBatch(instances), # TODO: make sure this works
+            batch_sampler=self.wrapped_indices_iterator,
+            collate_fn=lambda instances: StandardBatch(instances),
             num_workers=num_workers
         ))
 
@@ -80,9 +82,10 @@ class StandardBatchIterator(AbstractBatchIterator):
 
     def __next__(self):
         # TODO: test this function and then remove the breakpoint
-        #import pdb; pdb.set_trace()
-        next(self.indices_iterator)
-        return next(self.dataloaderiter)
+        # import pdb; pdb.set_trace()
+        batch = next(self.dataloaderiter)
+        self.indices_iterator = self.wrapped_indices_iterator.pop_iterator()
+        return batch
 
     def iterator_info(self):
         return self.indices_iterator.iterator_info()
@@ -106,6 +109,33 @@ class DatasetWrapper(Dataset):
         Returns the length of the dataset
         """
         return len(self.dataset)
+
+class IteratorQueueWrapper:
+    """
+    Keeps track of a queue of the iterator's state after each next call
+    """
+    def __init__(self, iterator):
+        self.iterators = queue.Queue()
+        self.last_iterator = iterator
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        """
+        Adds a copy of the current iterator to the queue and increments it,
+        returning it's next output
+        """
+        output = next(self.last_iterator)
+        self.iterators.put(copy.deepcopy(self.last_iterator))
+        return output
+
+    def pop_iterator(self):
+        """
+        Returns the next iterator in the queue
+        """
+        return self.iterators.get()
+
 
 class SequentialIndicesIterator(AbstractIndicesIterator):
     """
@@ -186,7 +216,8 @@ class RandomIndicesIterator(AbstractIndicesIterator):
            (isinstance(self.num_epochs, bool) and self.num_epochs == True and isinstance(self.num_iterations, int)):
             return self.num_iterations
         elif isinstance(self.num_epochs, int) and self.num_iterations is None:
-            return round((self.num_epochs*self.source_length - self.samples_seen)/self.batch_size)+self.batches_seen
+            return round((self.num_epochs*self.source_length - self.samples_seen)\
+                         /min(self.batch_size, self.source_length))+self.batches_seen
 
     def iterator_info(self):
         return {"batches_seen":self.batches_seen, "samples_seen":self.samples_seen, "epochs_seen":self.epochs_seen}
