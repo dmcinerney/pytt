@@ -3,13 +3,13 @@ from batching.abstract_batcher import AbstractBatcher,\
                                       AbstractInstance,\
                                       AbstractBatch,\
                                       AbstractIndicesIterator
+import numpy as np
 import torch
 from torch.utils.data import Dataset,\
                              DataLoader,\
                              Sampler,\
                              SequentialSampler,\
-                             RandomSampler,\
-                             BatchSampler
+                             RandomSampler
 import copy
 
 class StandardBatcher(AbstractBatcher):
@@ -26,7 +26,7 @@ class StandardBatcher(AbstractBatcher):
         return StandardInstance(raw_datapoint)
 
     def batch_from_raw(self, raw_datapoints):
-        return StandardBatch([process_raw(raw_datapoint) for raw_datapoint in raw_datapoints])
+        return StandardBatch([self.process_datapoint(raw_datapoint) for raw_datapoint in raw_datapoints])
 
     def out_batch_to_readable(self, output_batch):
         # TODO: implement this
@@ -80,7 +80,7 @@ class StandardBatchIterator(AbstractBatchIterator):
 
     def __next__(self):
         # TODO: test this function and then remove the breakpoint
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         next(self.indices_iterator)
         return next(self.dataloaderiter)
 
@@ -116,31 +116,33 @@ class SequentialIndicesIterator(AbstractIndicesIterator):
     def __init__(self, source_length, batch_size):
         self.samples_seen = 0
         self.batches_seen = 0
+        self.source_length = source_length
         self.sample_iter = iter(SequentialSampler(range(source_length)))
         self.set_batch_iter(batch_size)
 
     def __next__(self):
-        indices = next(self.sample_iter)
+        indices = next(self.batch_iter)
         self.samples_seen += len(indices)
         self.batches_seen += 1
         return indices
 
+    def __len__(self):
+        return self.source_length
+
     def iterator_info(self):
         return {"batches_seen":self.batches_seen, "samples_seen":self.samples_seen}
 
-    def set_batch_iter(batch_size):
+    def set_batch_iter(self, batch_size):
         """
         Sets the batch iterator to a new batch iterator with batch size batch_size
         """
         self.batch_size = batch_size
-        self.batch_iter = iter(BatchSampler(IteratorWrapper(self.sample_iter), batch_size, False))
+        self.batch_iter = BatchSampleIterator(self.sample_iter, batch_size, False)
 
 class RandomIndicesIterator(AbstractIndicesIterator):
     """
     Implementation of an AbstractIndicesIterator which allows one to specify various types of random samplers:
-        if epochs is None and iterations is None:
-            the object is an infinite random sampler with replacement
-        elif epochs is None and isinstance(iterations, int):
+        if epochs is None and isinstance(iterations, int):
             the object is a random sampler with replacement that stops after iterations iterations
         elif isinstance(epochs, bool) and epochs == True and isinstance(iterations, int):
             the object is a random sampler without replacement that stops after iterations iterations and counts epochs
@@ -158,6 +160,7 @@ class RandomIndicesIterator(AbstractIndicesIterator):
         self.num_epochs = epochs
         self.num_iterations = iterations
         self.replacement = self.check_flags_return_if_replacement(epochs, iterations)
+        self.source_length = source_length
         self.sampler = RandomSampler(range(source_length), replacement=self.replacement)
         self.sample_iter = iter(self.sampler)
         self.set_batch_iter(batch_size)
@@ -178,15 +181,22 @@ class RandomIndicesIterator(AbstractIndicesIterator):
         self.batches_seen += 1
         return indices
 
+    def __len__(self):
+        if (self.num_epochs is None and isinstance(self.num_iterations, int)) or\
+           (isinstance(self.num_epochs, bool) and self.num_epochs == True and isinstance(self.num_iterations, int)):
+            return self.num_iterations
+        elif isinstance(self.num_epochs, int) and self.num_iterations is None:
+            return round((self.num_epochs*self.source_length - self.samples_seen)/self.batch_size)+self.batches_seen
+
     def iterator_info(self):
         return {"batches_seen":self.batches_seen, "samples_seen":self.samples_seen, "epochs_seen":self.epochs_seen}
 
-    def set_batch_iter(batch_size):
+    def set_batch_iter(self, batch_size):
         """
         Sets the batch iterator to a new batch iterator with batch size batch_size
         """
         self.batch_size = batch_size
-        self.batch_iter = iter(BatchSampler(IteratorWrapper(self.sample_iter), batch_size, False))
+        self.batch_iter = BatchSampleIterator(self.sample_iter, batch_size, False)
 
     def set_stop(epochs, iterations):
         """
@@ -204,28 +214,32 @@ class RandomIndicesIterator(AbstractIndicesIterator):
         """
         Checks if the flags are compatable and returns if the random sampling is done with replacement
         """
-        if epochs is None and iterations is None or\
-           epochs is None and isinstance(iterations, int):
+        if epochs is None and isinstance(iterations, int):
             return True
-        elif isinstance(epochs, bool) and epochs == True and isinstance(iterations, int) or\
-             isinstance(epochs, int) and iterations is None:
+        elif (isinstance(epochs, bool) and epochs == True and isinstance(iterations, int)) or\
+             (isinstance(epochs, int) and iterations is None):
             return False
         else:
             raise Exception
 
-class IteratorWrapper(Sampler):
-    """
-    Small wrapper so that a Sampler's iterator can act as a Sampler itself,
-    allowing it to be wrapped in a BatchSampler (used in IndicesIterators)
-    """
-    def __init__(self, iterator):
-        self.iterator = iterator
+class BatchSampleIterator:
+    def __init__(self, sample_iter, batch_size, drop_last):
+        self.sample_iter = sample_iter
+        self.batch_size = batch_size
+        self.drop_last = drop_last
 
     def __iter__(self):
-        return iter(self.iterator)
+        return self
 
-    def __len__(self):
-        return len(self.iterator)
+    def __next__(self):
+        batch = []
+        for idx in self.sample_iter:
+            batch.append(idx)
+            if len(batch) >= self.batch_size:
+                break
+        if len(batch) == 0 or (self.drop_last and len(batch) < self.batch_size):
+            raise StopIteration
+        return batch
 
 class StandardInstance(AbstractInstance):
     """
@@ -235,7 +249,7 @@ class StandardInstance(AbstractInstance):
     """
     def __init__(self, raw_datapoint):
         self.datapoint = raw_datapoint
-        self.input = raw_datapoint
+        self.input = {k:torch.tensor(v) for k,v in raw_datapoint.items()}
 
 class StandardBatch(AbstractBatch):
     """
@@ -245,8 +259,8 @@ class StandardBatch(AbstractBatch):
     """
     def __init__(self, instances):
         self.datapoints = [instance.datapoint for instance in instances]
-        self.inputs = {k:pad_and_concat((instance.input[k] for instance in instances))
-                       for k in instance[0].input.keys()}
+        self.inputs = {k:pad_and_concat([instance.input[k] for instance in instances])
+                       for k in instances[0].input.keys()}
 
     def split(self, n):
         # TODO: implement this

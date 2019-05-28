@@ -213,6 +213,13 @@ class AbstractIndicesIterator(Sampler):
         """
         raise NotImplementedError
 
+    def __len__(self):
+        """
+        Returns the length of the iterator
+        """
+        raise NotImplementedError
+
+
     def iterator_info(self):
         """
         Returns a dictionary describing what has been already iterated through
