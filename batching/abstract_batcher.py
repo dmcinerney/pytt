@@ -1,5 +1,6 @@
 from torch.utils.data import Sampler
 import pickle as pkl
+from utils import split
 
 class AbstractBatcher:
     """
@@ -13,32 +14,39 @@ class AbstractBatcher:
 
     def process_datapoint(self, raw_datapoint):
         """
-        returns an instance made from the raw datapoint
+        Returns an instance made from the raw datapoint
         """
         raise NotImplementedError
 
     def batch_from_dataset(self, dataset, indices):
         """
-        returns a batch made from the raw datapoints at the given indices in the dataset
+        Returns a batch made from the raw datapoints at the given indices in the dataset
         """
         raw_datapoint_generator = (dataset[i] for i in indices)
         return self.batch_from_raw(raw_datapoint_generator)
 
     def batch_from_raw(self, raw_datapoints):
         """
-        returns a batch made from the raw datapoints given
+        Returns a batch made from the raw datapoints given
+        """
+        processed_datapoint_generator = (self.process_datapoint(raw_datapoint) for raw_datapoint in raw_datapoints)
+        return self.batch(processed_datapoint_generator)
+
+    def batch(self, instances):
+        """
+        Returns a batch made from instance objects
         """
         raise NotImplementedError
 
     def out_batch_to_readable(self, output_batch):
         """
-        returns a list of readable outputs given the output batch from the model
+        Returns a list of readable outputs given the output batch from the model
         """
         raise NotImplementedError
 
     def batch_iterator(self, dataset, batch_size):
         """
-        returns an iterator of batches from the dataset
+        Returns an iterator of batches from the dataset
         """
         raise NotImplementedError
 
@@ -80,7 +88,7 @@ class AbstractInstance:
     """
     def __init__(self, raw_datapoint):
         """
-        initializes the instance object using a raw data dictionary
+        Initializes the instance object using a raw data dictionary
 
         inputs:
             1) raw datapoint
@@ -92,6 +100,14 @@ class AbstractInstance:
         """
         raise NotImplementedError
 
+    def to(self, device):
+        """
+        Moves Instance input tensors to the specified device
+        """
+        for k,v in self.input.items():
+            self.input[k] = v.to(device=device)
+        return self
+
 class AbstractBatch:
     """
     Handles collecting instances into a batch
@@ -99,6 +115,19 @@ class AbstractBatch:
     This is an abstract class that allows a very flexible framework for creating batches.
     See standard_batchers.py for examples of standard implementations of this abstract architecture.
     """
+    @classmethod
+    def init_batches_across_devices(cls, instances, devices):
+        """
+        Returns a list of batches of approximately equal size that cover all the
+        instances in order, each batch corresponding to one of the devices specified
+        """
+        batches = []
+        offset = 0
+        for device,batch_size in zip(devices, split(len(instances), len(devices))):
+            batches.append(cls(instances[offset:offset+batch_size]).to(device))
+            offset += batch_size
+        return batches
+
     def __init__(self, instances):
         """
         Initializes the batch object using a list of instance objects
@@ -113,18 +142,6 @@ class AbstractBatch:
         """
         raise NotImplementedError
 
-    def split(self, n):
-        """
-        splits batch into n approximately equally sized batches
-
-        inputs:
-            1) n - number of different sections to split into
-
-        outputs:
-            1) list of batches of size n
-        """
-        raise NotImplementedError
-
     def __len__(self):
         """
         Returns the number of datapoints in the batch
@@ -133,9 +150,11 @@ class AbstractBatch:
 
     def to(self, device):
         """
-        Copies batch to the specified device
+        Moves the batch to the specified device
         """
-        raise NotImplementedError
+        for k,v in self.inputs.items():
+            self.inputs[k] = v.to(device=device)
+        return self
 
 class AbstractOutputInstance:
     """
@@ -174,12 +193,6 @@ class AbstractOutputBatch:
     def get_output_insances(self):
         """
         Returns a list of AbstractOutputInstance objects
-        """
-        raise NotImplementedError
-
-    def to(self, device):
-        """
-        Copies output batch to the specified device
         """
         raise NotImplementedError
 

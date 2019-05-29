@@ -5,6 +5,7 @@ from batching.abstract_batcher import AbstractBatcher,\
                                       AbstractIndicesIterator
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset,\
                              DataLoader,\
                              Sampler,\
@@ -12,6 +13,7 @@ from torch.utils.data import Dataset,\
                              RandomSampler
 import copy
 import queue
+import math
 
 class StandardBatcher(AbstractBatcher):
     """
@@ -26,14 +28,29 @@ class StandardBatcher(AbstractBatcher):
     def process_datapoint(self, raw_datapoint):
         return StandardInstance(raw_datapoint)
 
-    def batch_from_raw(self, raw_datapoints):
-        return StandardBatch([self.process_datapoint(raw_datapoint) for raw_datapoint in raw_datapoints])
+
+    def batch_from_dataset(self, dataset, indices, devices=None):
+        raw_datapoint_generator = (dataset[i] for i in indices)
+        return self.batch_from_raw(raw_datapoint_generator, devices=devices)
+
+    def batch_from_raw(self, raw_datapoints, devices=None):
+        processed_datapoint_generator = (self.process_datapoint(raw_datapoint) for raw_datapoint in raw_datapoints)
+        return self.batch(processed_datapoint_generator, devices=devices)
+
+    def batch(self, instances, devices=None):
+        if devices is None:
+            return StandardBatch(list(instances))
+        else:
+            if isinstance(devices, str):
+                return StandardBatch(list(instances)).to(devices)
+            else:
+                return StandardBatch.init_batches_across_devices(list(instances), devices)
 
     def out_batch_to_readable(self, output_batch):
         # TODO: implement this
         raise NotImplementedError
 
-    def batch_iterator(self, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0):
+    def batch_iterator(self, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0, devices=None):
         return StandardBatchIterator(
             self,
             dataset,
@@ -43,6 +60,7 @@ class StandardBatcher(AbstractBatcher):
             iterations=iterations,
             indices_iterator=indices_iterator,
             num_workers=num_workers,
+            devices=devices,
         )
 
 class StandardBatchIterator(AbstractBatchIterator):
@@ -54,9 +72,20 @@ class StandardBatchIterator(AbstractBatchIterator):
             create and use a sequential indices_iterator (see SequentialIndicesIterator)
     It also gives an option to give an indices_iterator which should be an instance of an AbstractIndicesIterator
 
+    Iterator Queue Wrapper: This implementation uses a pytorch DataLoader, but adds functionality such as allowing
+    one to access an indices iterator corresponding to the state of the iterator when it loaded the indices for the
+    current batch.  This is obtained by wrapping the indices iterator in a custom IteratorQueueWrapper, which saves
+    the states of the iterator after each next call performed by the DataLoader on the batch_sampler until the
+    corresponding next call to the StandardBatchIterator catches up.  The first iterator state in the queue is then
+    popped off to set the indices iterator to the correct state (the state just after the current batch's indices
+    were loaded.)
+
+    Devices: This implementation also allows for batches to be split up and loaded to multiple devices using the
+    devices 
+
     All functions without comments are described in the superclass.
     """
-    def __init__(self, batcher, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0):
+    def __init__(self, batcher, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0, devices=None):
         dataset = DatasetWrapper(dataset, batcher)
         if indices_iterator is not None:
             if batch_size is not None or random is not None or epochs is not None or iterations is not None:
@@ -70,10 +99,11 @@ class StandardBatchIterator(AbstractBatchIterator):
             else:
                 self.indices_iterator = SequentialIndicesIterator(len(dataset), batch_size)
         self.wrapped_indices_iterator = IteratorQueueWrapper(copy.deepcopy(self.indices_iterator))
+        collate_fn = lambda instances: batcher.batch(instances, devices=devices)
         self.dataloaderiter = iter(DataLoader(
             dataset,
             batch_sampler=self.wrapped_indices_iterator,
-            collate_fn=lambda instances: StandardBatch(instances),
+            collate_fn=collate_fn,
             num_workers=num_workers
         ))
 
@@ -81,8 +111,6 @@ class StandardBatchIterator(AbstractBatchIterator):
         return self
 
     def __next__(self):
-        # TODO: test this function and then remove the breakpoint
-        # import pdb; pdb.set_trace()
         batch = next(self.dataloaderiter)
         self.indices_iterator = self.wrapped_indices_iterator.pop_iterator()
         return batch
@@ -216,8 +244,8 @@ class RandomIndicesIterator(AbstractIndicesIterator):
            (isinstance(self.num_epochs, bool) and self.num_epochs == True and isinstance(self.num_iterations, int)):
             return self.num_iterations
         elif isinstance(self.num_epochs, int) and self.num_iterations is None:
-            return round((self.num_epochs*self.source_length - self.samples_seen)\
-                         /min(self.batch_size, self.source_length))+self.batches_seen
+            return math.ceil((self.num_epochs*self.source_length - self.samples_seen)\
+                             /min(self.batch_size, self.source_length))+self.batches_seen
 
     def iterator_info(self):
         return {"batches_seen":self.batches_seen, "samples_seen":self.samples_seen, "epochs_seen":self.epochs_seen}
@@ -254,6 +282,10 @@ class RandomIndicesIterator(AbstractIndicesIterator):
             raise Exception
 
 class BatchSampleIterator:
+    """
+    Iterates over batches of indices using the iterator of a sampler
+    (similar to what BatchSampler.__iter__() returns, but it is an actual iterator rather than a generator)
+    """
     def __init__(self, sample_iter, batch_size, drop_last):
         self.sample_iter = sample_iter
         self.batch_size = batch_size
@@ -263,6 +295,9 @@ class BatchSampleIterator:
         return self
 
     def __next__(self):
+        """
+        Returns the next batch of indices using the sample_iter
+        """
         batch = []
         for idx in self.sample_iter:
             batch.append(idx)
@@ -278,9 +313,9 @@ class StandardInstance(AbstractInstance):
 
     All functions without comments are described in the superclass.
     """
-    def __init__(self, raw_datapoint):
+    def __init__(self, raw_datapoint, device=None):
         self.datapoint = raw_datapoint
-        self.input = {k:torch.tensor(v) for k,v in raw_datapoint.items()}
+        self.input = {k:torch.tensor(v).to(device=device) for k,v in raw_datapoint.items()}
 
 class StandardBatch(AbstractBatch):
     """
@@ -292,14 +327,6 @@ class StandardBatch(AbstractBatch):
         self.datapoints = [instance.datapoint for instance in instances]
         self.inputs = {k:pad_and_concat([instance.input[k] for instance in instances])
                        for k in instances[0].input.keys()}
-
-    def split(self, n):
-        # TODO: implement this
-        raise NotImplementedError
-
-    def to(self, device):
-        # TODO: implement this
-        raise NotImplementedError
 
 # TODO: figure out if something can be done for the output batch and output instance objects
 

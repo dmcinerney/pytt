@@ -24,7 +24,7 @@ class Tokenizer:
         else:
             if token not in oov_token2id.keys():
                 oov_token2id[token] = len(oov_token2id)
-            return long(-1-oov_token2id[token])
+            return -1-oov_token2id[token]
 
     def id2token(self, index, oov_id2token={}):
         """
