@@ -17,17 +17,33 @@
 # batch_iterator2 = batcher.batch_iterator(raw_dataset, indices_iterator=indices_iterator)
 # for batch in batch_iterator2:
 #     print(batch_iterator2.iterator_info(), batch_iterator2.indices_iterator.replacement, len(batch_iterator2.indices_iterator), len(raw_dataset))
+import torch
 from nlp.summarization_dataset import SummarizationDataset, load_vocab
 from nlp.summarization_batcher import SummarizationBatcher
 from nlp.tokenizer import Tokenizer
-raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
-tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
-batcher = SummarizationBatcher(tokenizer)
-batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=16, random=True, iterations=32, num_workers=0, devices=['cuda:0', 'cuda:1'])
-for batch in batch_iterator:
-    print(batch_iterator.iterator_info(), batch_iterator.indices_iterator.replacement, len(batch_iterator.indices_iterator), len(raw_dataset))
-    print(batch)
-    import pdb; pdb.set_trace()
-    if (batch_iterator.iterator_info()['batches_seen']+1) % 1000 == 0:
-        break
-print("done")
+from torch import nn
+
+class TestModel(nn.Module):
+	def forward(self, **kwargs):
+		import pdb; pdb.set_trace()
+
+if __name__ == '__main__':
+	# torch.multiprocessing.set_start_method("spawn")
+	raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
+	tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
+	batcher = SummarizationBatcher(tokenizer)
+	batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=16, random=True, iterations=200, num_workers=5)#, devices=['cuda:0', 'cuda:1'])
+	for batch in batch_iterator:
+	    print(batch_iterator.iterator_info(), batch_iterator.indices_iterator.replacement, len(batch_iterator.indices_iterator), len(raw_dataset))
+	    # print(batch)
+	    if (batch_iterator.iterator_info()['batches_seen']+1) % 1000 == 0:
+	        break
+	print("done")
+	batch_iterator.indices_iterator.set_stop(iterations=400)
+	batch_iterator = batcher.batch_iterator(raw_dataset, indices_iterator=batch_iterator.indices_iterator, num_workers=5)#, devices=['cuda:0', 'cuda:1'])
+	for batch in batch_iterator:
+	    print(batch_iterator.iterator_info(), batch_iterator.indices_iterator.replacement, len(batch_iterator.indices_iterator), len(raw_dataset))
+	    # print(batch)
+	    if (batch_iterator.iterator_info()['batches_seen']+1) % 1000 == 0:
+	        break
+	print("done")

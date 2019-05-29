@@ -99,7 +99,7 @@ class StandardBatchIterator(AbstractBatchIterator):
             else:
                 self.indices_iterator = SequentialIndicesIterator(len(dataset), batch_size)
         self.wrapped_indices_iterator = IteratorQueueWrapper(copy.deepcopy(self.indices_iterator))
-        collate_fn = lambda instances: batcher.batch(instances, devices=devices)
+        collate_fn = CollateFnObject(batcher, devices)
         self.dataloaderiter = iter(DataLoader(
             dataset,
             batch_sampler=self.wrapped_indices_iterator,
@@ -117,6 +117,14 @@ class StandardBatchIterator(AbstractBatchIterator):
 
     def iterator_info(self):
         return self.indices_iterator.iterator_info()
+
+class CollateFnObject:
+    def __init__(self, batcher, devices):
+        self.batcher = batcher
+        self.devices = devices
+
+    def __call__(self, instances):
+        return self.batcher.batch(instances, devices=self.devices)
 
 class DatasetWrapper(Dataset):
     """
@@ -257,7 +265,7 @@ class RandomIndicesIterator(AbstractIndicesIterator):
         self.batch_size = batch_size
         self.batch_iter = BatchSampleIterator(self.sample_iter, batch_size, False)
 
-    def set_stop(epochs, iterations):
+    def set_stop(self, epochs=None, iterations=None):
         """
         Changes the stopping point of the iterator by respecifying the epochs and iterations parameters
 

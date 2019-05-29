@@ -37,8 +37,6 @@ def default_step_func(model, batch, loss_func, error_func=None, training=False, 
         error_value = None
     return loss_value, error_value
 
-
-
 class Checkpoint:
     def __init__(self, model, optimizer, batch_iterator, val_iterator=None):
         self.model = model
