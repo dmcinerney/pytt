@@ -22,28 +22,36 @@ from nlp.summarization_dataset import SummarizationDataset, load_vocab
 from nlp.summarization_batcher import SummarizationBatcher
 from nlp.tokenizer import Tokenizer
 from torch import nn
+from utils import get_random_state
+from distributed.distributed import distributed_wrapper
 
-class TestModel(nn.Module):
-	def forward(self, **kwargs):
-		import pdb; pdb.set_trace()
+def iterate(batcher, raw_dataset, rank_worldsize=None):
+    print(rank_worldsize)
+    batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=16, random=True, iterations=200, num_workers=5, rank_worldsize=rank_worldsize)#, devices=['cuda:0', 'cuda:1'])
+    for batch in batch_iterator:
+        print(batch_iterator.iterator_info(), len(batch_iterator.indices_iterator), len(raw_dataset))
+        # print(batch)
+        batch.to('cuda:'+str(rank_worldsize[0]))
+        if (batch_iterator.iterator_info()['batches_seen']+1) % 1000 == 0:
+            break
+    print("done")
+    batch_iterator.indices_iterator.set_stop(iterations=400)
+    batch_iterator = batcher.batch_iterator(raw_dataset, indices_iterator=batch_iterator.indices_iterator, num_workers=5, rank_worldsize=rank_worldsize)#, devices=['cuda:0', 'cuda:1'])
+    for batch in batch_iterator:
+        print(batch_iterator.iterator_info(), len(batch_iterator.indices_iterator), len(raw_dataset))
+        # print(batch)
+        batch.to('cuda:'+str(rank_worldsize[0]))
+        if (batch_iterator.iterator_info()['batches_seen']+1) % 1000 == 0:
+            break
+    print("done")
 
 if __name__ == '__main__':
-	# torch.multiprocessing.set_start_method("spawn")
-	raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
-	tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
-	batcher = SummarizationBatcher(tokenizer)
-	batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=16, random=True, iterations=200, num_workers=5)#, devices=['cuda:0', 'cuda:1'])
-	for batch in batch_iterator:
-	    print(batch_iterator.iterator_info(), batch_iterator.indices_iterator.replacement, len(batch_iterator.indices_iterator), len(raw_dataset))
-	    # print(batch)
-	    if (batch_iterator.iterator_info()['batches_seen']+1) % 1000 == 0:
-	        break
-	print("done")
-	batch_iterator.indices_iterator.set_stop(iterations=400)
-	batch_iterator = batcher.batch_iterator(raw_dataset, indices_iterator=batch_iterator.indices_iterator, num_workers=5)#, devices=['cuda:0', 'cuda:1'])
-	for batch in batch_iterator:
-	    print(batch_iterator.iterator_info(), batch_iterator.indices_iterator.replacement, len(batch_iterator.indices_iterator), len(raw_dataset))
-	    # print(batch)
-	    if (batch_iterator.iterator_info()['batches_seen']+1) % 1000 == 0:
-	        break
-	print("done")
+    torch.multiprocessing.set_start_method("spawn")
+    raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
+    tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
+    batcher = SummarizationBatcher(tokenizer)
+    nprocs = 2
+    distributed_iterate = distributed_wrapper(iterate, nprocs, random_state=get_random_state())
+    distributed_iterate(batcher, raw_dataset)
+#     iterate(batcher, raw_dataset)
+

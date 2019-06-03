@@ -5,3 +5,4 @@
 #   creates/loads model, optimizer, batch_iterator
 #   calls train
 #   copy checkpoint directory
+

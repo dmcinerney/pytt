@@ -3,7 +3,6 @@ import torch
 import pickle as pkl
 import math
 
-
 def seed_state(seed=0):
     """
     Sets the seed for numpy and torch and makes cuda deterministic as well
@@ -13,23 +12,36 @@ def seed_state(seed=0):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-def save_random_state(filename):
+def get_random_state():
     """
-    Saves the random states of both numpy and torch into a file via pickle
+    Returns the random states of both numpy and torch in a tuple
     """
     numpy_state = np.random.get_state()
     torch_state = torch.get_rng_state()
-    with open(filename, 'wb') as f:
-        pkl.dump(tuple(numpy_state, torch_state), filename)
+    random_state = (numpy_state, torch_state)
+    return random_state
 
-def load_random_state(filename):
+def set_random_state(random_state):
     """
-    Loads the random states of both numpy and torch into a file via pickle
+    Loads the random states of both numpy and torch from a tuple
     """
-    with open(filename, 'rb') as f:
-        numpy_state, torch_state = pkl.load(filename)
+    numpy_state, torch_state = random_state
     np.random.set_state(numpy_state)
     torch.set_rng_state(torch_state)
+
+def write_pickle(obj, filename):
+    """
+    Write an object using pickle
+    """
+    with open(filename, 'wb') as f:
+        pkl.dump(obj, f)
+
+def read_pickle(filename):
+    """
+    Read an object from a pickle file
+    """
+    with open(filename, 'rb') as f:
+        return pkl.load(f)
 
 def split(n, k):
     """
@@ -43,3 +55,19 @@ def split(n, k):
             yield new_size_floor + 1
         else:
             yield new_size_floor
+
+def split_range(n, k, i):
+    """
+    Returns a the range of the indices of section i if you split an object
+    of length n into k approximately equal length parts
+    """
+    if i >= k:
+        raise Exception
+    new_size_floor = math.floor(n/k)
+    additional = n % k
+    if i < additional:
+        offset = (new_size_floor + 1)*i
+        return offset, offset + new_size_floor + 1
+    else:
+        offset = (new_size_floor + 1)*additional
+        return offset, offset + new_size_floor

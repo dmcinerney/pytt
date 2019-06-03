@@ -14,11 +14,12 @@ from torch.utils.data import Dataset,\
 import copy
 import queue
 import math
+from utils import split_range
 
 class StandardBatcher(AbstractBatcher):
     """
-    Implementation of a simple AbstractBatcher which does no processing (see StandardInstance) and returns a StandardBatchIterator
-    from the batch_iterator function
+    Implementation of a simple AbstractBatcher which does no processing (see StandardInstance) and returns a 
+    StandardBatchIterator from the batch_iterator function
 
     All functions without comments are described in the superclass.
     """
@@ -27,7 +28,6 @@ class StandardBatcher(AbstractBatcher):
 
     def process_datapoint(self, raw_datapoint):
         return StandardInstance(raw_datapoint)
-
 
     def batch_from_dataset(self, dataset, indices, devices=None):
         raw_datapoint_generator = (dataset[i] for i in indices)
@@ -50,7 +50,7 @@ class StandardBatcher(AbstractBatcher):
         # TODO: implement this
         raise NotImplementedError
 
-    def batch_iterator(self, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0, devices=None):
+    def batch_iterator(self, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0, devices=None, rank_worldsize=None):
         return StandardBatchIterator(
             self,
             dataset,
@@ -61,6 +61,7 @@ class StandardBatcher(AbstractBatcher):
             indices_iterator=indices_iterator,
             num_workers=num_workers,
             devices=devices,
+            rank_worldsize=rank_worldsize,
         )
 
 class StandardBatchIterator(AbstractBatchIterator):
@@ -81,11 +82,14 @@ class StandardBatchIterator(AbstractBatchIterator):
     were loaded.)
 
     Devices: This implementation also allows for batches to be split up and loaded to multiple devices using the
-    devices 
+    devices
+    
+    Rank_worldsize: describes the rank and worldsize of the process_group, automatically only selecting the indices
+    applicable to the current process
 
     All functions without comments are described in the superclass.
     """
-    def __init__(self, batcher, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0, devices=None):
+    def __init__(self, batcher, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0, devices=None, rank_worldsize=None):
         dataset = DatasetWrapper(dataset, batcher)
         if indices_iterator is not None:
             if batch_size is not None or random is not None or epochs is not None or iterations is not None:
@@ -99,10 +103,13 @@ class StandardBatchIterator(AbstractBatchIterator):
             else:
                 self.indices_iterator = SequentialIndicesIterator(len(dataset), batch_size)
         self.wrapped_indices_iterator = IteratorQueueWrapper(copy.deepcopy(self.indices_iterator))
+        tmp_wrapped_indices_iterator = self.wrapped_indices_iterator
+        if rank_worldsize is not None:
+            tmp_wrapped_indices_iterator = IndicesIteratorDistributedWrapper(tmp_wrapped_indices_iterator, rank_worldsize)
         collate_fn = CollateFnObject(batcher, devices)
         self.dataloaderiter = iter(DataLoader(
             dataset,
-            batch_sampler=self.wrapped_indices_iterator,
+            batch_sampler=tmp_wrapped_indices_iterator,
             collate_fn=collate_fn,
             num_workers=num_workers
         ))
@@ -172,7 +179,26 @@ class IteratorQueueWrapper:
         """
         return self.iterators.get()
 
+class IndicesIteratorDistributedWrapper:
+    """
+    Wraps the indices iterator and only returns indices relevant to the current process at each next call,
+    all other functions are the same
+    """
+    def __init__(self, indices_iterator, rank_worldsize):
+        self.indices_iterator = indices_iterator
+        self.rank, self.worldsize = rank_worldsize
+        
+    def __iter__(self):
+        return self
 
+    def __next__(self):
+        """
+        selects only the subset of the batch as a function of the rank and worldsize of the current process group
+        """
+        batch_indices = next(self.indices_iterator)
+        i, j = split_range(len(batch_indices), self.worldsize, self.rank)
+        return batch_indices[i:j]
+    
 class SequentialIndicesIterator(AbstractIndicesIterator):
     """
     Implementation of an AbstractIndicesIterator that iterates over the dataset in order
