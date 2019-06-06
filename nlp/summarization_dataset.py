@@ -43,4 +43,4 @@ def load_vocab(filename, max_size):
             if i >= max_size:
                 break
             token, _ = line.split()
-            yield token
+            yield token.decode()

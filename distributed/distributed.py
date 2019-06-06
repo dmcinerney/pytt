@@ -4,9 +4,9 @@ import torch.multiprocessing as mp
 from utils import set_random_state
 
 
-def setup(rank, world_size, random_state=None, environment_name='MASTER', address='localhost', port='12355', backend='gloo'):
+def setup(rank, world_size, random_state=None, environment_name='MASTER', address='localhost', port='12355', backend='nccl'):
     """
-    sets up the distributed process
+    Sets up the distributed process
     """
     # set up environment
     os.environ[environment_name+'_ADDR'] = address
@@ -21,26 +21,24 @@ def setup(rank, world_size, random_state=None, environment_name='MASTER', addres
 
 def cleanup():
     """
-    cleans up the distributed process
+    Cleans up the distributed process
     """
     dist.destroy_process_group()
 
 def _process_func(rank, setup_args, setup_kwargs, func, func_args, func_kwargs):
     """
     Sandwiches function call between setup and cleanup with a local process rank of rank
-    
+
     IMPORTANT NOTE: this should only be used by the distributed_wrapper function
     """
-    if 'rank' in func_kwargs.keys():
-        raise Exception
     setup(rank, *setup_args, **setup_kwargs)
-    func(*func_args, **func_kwargs, rank_worldsize=(rank, setup_args[0]))
+    func(*func_args, **func_kwargs)
     cleanup()
 
 def distributed_wrapper(func, nprocs, random_state=None, environment_name='MASTER', address='localhost', port='12355', backend='gloo'):
     """
     Wraps a function, returning a function that spawns multiple processes, optionally starting from the given random state
-    
+
     IMPORTANT NOTE: the given function must take an optional rank_worldsize parameter, describing the rank and worldsize
     """
     # create setup_args/kwargs
@@ -58,9 +56,10 @@ def distributed_wrapper(func, nprocs, random_state=None, environment_name='MASTE
         """
         Spawns multiple processes that call the function with the given args
         """
-        # spawn processes using process function
         mp.spawn(_process_func,
              args=(setup_args, setup_kwargs, func, func_args, func_kwargs),
              nprocs=nprocs,
              join=True)
     return func_wrapper
+
+# TODO: Make sure different batch sizes on different machines get weighted accordingly

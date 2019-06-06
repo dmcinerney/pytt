@@ -6,8 +6,7 @@ class AbstractBatcher:
     """
     Handles all conversions from raw data to a batch and vice versa
 
-    This is an abstract class that allows a very flexible framework for creating batchers.
-    See standard_batchers.py for examples of standard implementations of this abstract architecture.
+    This is an abstract class that allows a very flexible framework for creating batchers.  See standard_batchers.py for examples of standard implementations of this abstract architecture.
     """
     def __init__(self):
         raise NotImplementedError
@@ -55,8 +54,7 @@ class AbstractBatchIterator:
     """
     Iterates over a dataset in batches
 
-    This is an abstract class that allows a very flexible framework for creating batch iterators.
-    See standard_batchers.py for examples of standard implementations of this abstract architecture.
+    This is an abstract class that allows a very flexible framework for creating batch iterators.  See standard_batchers.py for examples of standard implementations of this abstract architecture.
     """
     def __init__(self, batcher, dataset, batch_size):
         """
@@ -79,12 +77,12 @@ class AbstractBatchIterator:
         """
         raise NotImplementedError
 
+
 class AbstractInstance:
     """
     Handles preprocessing of raw datapoint, holding all information needed on a datapoint
 
-    This is an abstract class that allows a very flexible framework for creating instances.
-    See standard_batchers.py for examples of standard implementations of this abstract architecture.
+    This is an abstract class that allows a very flexible framework for creating instances.  See standard_batchers.py for examples of standard implementations of this abstract architecture.
     """
     def __init__(self, raw_datapoint):
         """
@@ -108,12 +106,12 @@ class AbstractInstance:
             self.input[k] = v.to(device=device)
         return self
 
+
 class AbstractBatch:
     """
     Handles collecting instances into a batch
 
-    This is an abstract class that allows a very flexible framework for creating batches.
-    See standard_batchers.py for examples of standard implementations of this abstract architecture.
+    This is an abstract class that allows a very flexible framework for creating batches.  See standard_batchers.py for examples of standard implementations of this abstract architecture.
     """
     @classmethod
     def init_batches_across_devices(cls, instances, devices):
@@ -156,12 +154,12 @@ class AbstractBatch:
             self.inputs[k] = v.to(device=device)
         return self
 
+
 class AbstractOutputInstance:
     """
     Handles postprocessing of model ouptuts into something readable
 
-    This is an abstract class that allows a very flexible framework for creating output instances.
-    See standard_batchers.py for examples of standard implementations of this abstract architecture.
+    This is an abstract class that allows a very flexible framework for creating output instances.  See standard_batchers.py for examples of standard implementations of this abstract architecture.
     """
     def __init__(self, output):
         """
@@ -174,8 +172,7 @@ class AbstractOutputBatch:
     """
     Handles collecting model outputs into an output_batch object
 
-    This is an abstract class that allows a very flexible framework for creating output batches.
-    See standard_batchers.py for examples of standard implementations of this abstract architecture.
+    This is an abstract class that allows a very flexible framework for creating output batches.  See standard_batchers.py for examples of standard implementations of this abstract architecture.
     """
     @staticmethod
     def combine(output_batches):
@@ -197,14 +194,12 @@ class AbstractOutputBatch:
         raise NotImplementedError
 
 
-
 # possible helper for batch iterator
 class AbstractIndicesIterator(Sampler):
     """
     Handles iterating of indices of the dataset
 
-    This is an abstract class that allows a very flexible framework for creating indices iterators.
-    See standard_batchers.py for examples of standard implementations of this abstract architecture.
+    This is an abstract class that allows a very flexible framework for creating indices iterators.  See standard_batchers.py for examples of standard implementations of this abstract architecture.
     """
     @staticmethod
     def load(filename):
@@ -231,7 +226,6 @@ class AbstractIndicesIterator(Sampler):
         Returns the length of the iterator
         """
         raise NotImplementedError
-
 
     def iterator_info(self):
         """

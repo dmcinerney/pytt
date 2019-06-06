@@ -6,6 +6,7 @@ from batching.abstract_batcher import AbstractBatcher,\
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torch.distributed as dist
 from torch.utils.data import Dataset,\
                              DataLoader,\
                              Sampler,\
@@ -16,10 +17,10 @@ import queue
 import math
 from utils import split_range
 
+
 class StandardBatcher(AbstractBatcher):
     """
-    Implementation of a simple AbstractBatcher which does no processing (see StandardInstance) and returns a 
-    StandardBatchIterator from the batch_iterator function
+    Implementation of a simple AbstractBatcher which does no processing (see StandardInstance) and returns a StandardBatchIterator from the batch_iterator function
 
     All functions without comments are described in the superclass.
     """
@@ -50,7 +51,7 @@ class StandardBatcher(AbstractBatcher):
         # TODO: implement this
         raise NotImplementedError
 
-    def batch_iterator(self, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0, devices=None, rank_worldsize=None):
+    def batch_iterator(self, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0, devices=None):
         return StandardBatchIterator(
             self,
             dataset,
@@ -61,8 +62,8 @@ class StandardBatcher(AbstractBatcher):
             indices_iterator=indices_iterator,
             num_workers=num_workers,
             devices=devices,
-            rank_worldsize=rank_worldsize,
         )
+
 
 class StandardBatchIterator(AbstractBatchIterator):
     """
@@ -73,23 +74,15 @@ class StandardBatchIterator(AbstractBatchIterator):
             create and use a sequential indices_iterator (see SequentialIndicesIterator)
     It also gives an option to give an indices_iterator which should be an instance of an AbstractIndicesIterator
 
-    Iterator Queue Wrapper: This implementation uses a pytorch DataLoader, but adds functionality such as allowing
-    one to access an indices iterator corresponding to the state of the iterator when it loaded the indices for the
-    current batch.  This is obtained by wrapping the indices iterator in a custom IteratorQueueWrapper, which saves
-    the states of the iterator after each next call performed by the DataLoader on the batch_sampler until the
-    corresponding next call to the StandardBatchIterator catches up.  The first iterator state in the queue is then
-    popped off to set the indices iterator to the correct state (the state just after the current batch's indices
-    were loaded.)
+    Iterator Queue Wrapper: This implementation uses a pytorch DataLoader, but adds functionality such as allowing one to access an indices iterator corresponding to the state of the iterator when it loaded the indices for the current batch.  This is obtained by wrapping the indices iterator in a custom IteratorQueueWrapper, which saves the states of the iterator after each next call performed by the DataLoader on the batch_sampler until the corresponding next call to the StandardBatchIterator catches up.  The first iterator state in the queue is then popped off to set the indices iterator to the correct state (the state just after the current batch's indices were loaded.)
 
-    Devices: This implementation also allows for batches to be split up and loaded to multiple devices using the
-    devices
-    
-    Rank_worldsize: describes the rank and worldsize of the process_group, automatically only selecting the indices
-    applicable to the current process
+    Devices: This implementation also allows for batches to be split up and loaded to multiple devices using the devices
+
+    Rank_worldsize: describes the rank and worldsize of the process_group, automatically only selecting the indices applicable to the current process
 
     All functions without comments are described in the superclass.
     """
-    def __init__(self, batcher, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0, devices=None, rank_worldsize=None):
+    def __init__(self, batcher, dataset, batch_size=None, random=None, epochs=None, iterations=None, indices_iterator=None, num_workers=0, devices=None):
         dataset = DatasetWrapper(dataset, batcher)
         if indices_iterator is not None:
             if batch_size is not None or random is not None or epochs is not None or iterations is not None:
@@ -104,8 +97,8 @@ class StandardBatchIterator(AbstractBatchIterator):
                 self.indices_iterator = SequentialIndicesIterator(len(dataset), batch_size)
         self.wrapped_indices_iterator = IteratorQueueWrapper(copy.deepcopy(self.indices_iterator))
         tmp_wrapped_indices_iterator = self.wrapped_indices_iterator
-        if rank_worldsize is not None:
-            tmp_wrapped_indices_iterator = IndicesIteratorDistributedWrapper(tmp_wrapped_indices_iterator, rank_worldsize)
+        if dist.is_initialized():
+            tmp_wrapped_indices_iterator = IndicesIteratorDistributedWrapper(tmp_wrapped_indices_iterator)
         collate_fn = CollateFnObject(batcher, devices)
         self.dataloaderiter = iter(DataLoader(
             dataset,
@@ -126,6 +119,11 @@ class StandardBatchIterator(AbstractBatchIterator):
         return self.indices_iterator.iterator_info()
 
 class CollateFnObject:
+    """
+    A callable object implementing the collate function by calling the batch function of the batcher
+
+    Note: this is needed to create the DataLoader
+    """
     def __init__(self, batcher, devices):
         self.batcher = batcher
         self.devices = devices
@@ -136,6 +134,8 @@ class CollateFnObject:
 class DatasetWrapper(Dataset):
     """
     Implementation of a Dataset that uses the input batcher to process each datapoint
+
+    Note: This is needed to create the DataLoader
     """
     def __init__(self, dataset, batcher):
         self.dataset = dataset
@@ -181,24 +181,23 @@ class IteratorQueueWrapper:
 
 class IndicesIteratorDistributedWrapper:
     """
-    Wraps the indices iterator and only returns indices relevant to the current process at each next call,
-    all other functions are the same
+    Wraps the indices iterator and only returns indices relevant to the current process at each next call, all other functions are the same
     """
-    def __init__(self, indices_iterator, rank_worldsize):
+    def __init__(self, indices_iterator):
         self.indices_iterator = indices_iterator
-        self.rank, self.worldsize = rank_worldsize
-        
+        self.rank, self.worldsize = dist.get_rank(), dist.get_world_size()
+
     def __iter__(self):
         return self
 
     def __next__(self):
         """
-        selects only the subset of the batch as a function of the rank and worldsize of the current process group
+        Selects only the subset of the batch as a function of the rank and worldsize of the current process group
         """
         batch_indices = next(self.indices_iterator)
         i, j = split_range(len(batch_indices), self.worldsize, self.rank)
         return batch_indices[i:j]
-    
+
 class SequentialIndicesIterator(AbstractIndicesIterator):
     """
     Implementation of an AbstractIndicesIterator that iterates over the dataset in order
@@ -317,8 +316,7 @@ class RandomIndicesIterator(AbstractIndicesIterator):
 
 class BatchSampleIterator:
     """
-    Iterates over batches of indices using the iterator of a sampler
-    (similar to what BatchSampler.__iter__() returns, but it is an actual iterator rather than a generator)
+    Iterates over batches of indices using the iterator of a sampler (similar to what BatchSampler.__iter__() returns, but it is an actual iterator rather than a generator)
     """
     def __init__(self, sample_iter, batch_size, drop_last):
         self.sample_iter = sample_iter
@@ -368,8 +366,7 @@ class StandardBatch(AbstractBatch):
 
 def get_max_dims(tensors):
     """
-    Returns None if the tensors are all the same size
-    and the maximum size in each dimension otherwise
+    Returns None if the tensors are all the same size and the maximum size in each dimension otherwise
     """
     dim = tensors[0].dim()
     max_size = [0]*dim

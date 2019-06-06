@@ -69,5 +69,5 @@ def split_range(n, k, i):
         offset = (new_size_floor + 1)*i
         return offset, offset + new_size_floor + 1
     else:
-        offset = (new_size_floor + 1)*additional
+        offset = (new_size_floor + 1)*additional + new_size_floor*(i-additional)
         return offset, offset + new_size_floor
