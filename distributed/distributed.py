@@ -4,7 +4,8 @@ import torch.multiprocessing as mp
 from utils import set_random_state
 
 
-def setup(rank, world_size, random_state=None, environment_name='MASTER', address='localhost', port='12355', backend='nccl'):
+def setup(rank, world_size, random_state=None, environment_name='MASTER',
+          address='localhost', port='12355', backend='nccl'):
     """
     Sets up the distributed process
     """
@@ -27,7 +28,8 @@ def cleanup():
 
 def _process_func(rank, setup_args, setup_kwargs, func, func_args, func_kwargs):
     """
-    Sandwiches function call between setup and cleanup with a local process rank of rank
+    Sandwiches function call between setup and cleanup with a local process rank
+    of rank
 
     IMPORTANT NOTE: this should only be used by the distributed_wrapper function
     """
@@ -35,11 +37,15 @@ def _process_func(rank, setup_args, setup_kwargs, func, func_args, func_kwargs):
     func(*func_args, **func_kwargs)
     cleanup()
 
-def distributed_wrapper(func, nprocs, random_state=None, environment_name='MASTER', address='localhost', port='12355', backend='gloo'):
+def distributed_wrapper(func, nprocs, random_state=None,
+                        environment_name='MASTER', address='localhost',
+                        port='12355', backend='gloo'):
     """
-    Wraps a function, returning a function that spawns multiple processes, optionally starting from the given random state
+    Wraps a function, returning a function that spawns multiple processes,
+    optionally starting from the given random state
 
-    IMPORTANT NOTE: the given function must take an optional rank_worldsize parameter, describing the rank and worldsize
+    IMPORTANT NOTE: the given function must take an optional rank_worldsize
+    parameter, describing the rank and worldsize
     """
     # create setup_args/kwargs
     setup_args = (nprocs,)
@@ -62,4 +68,5 @@ def distributed_wrapper(func, nprocs, random_state=None, environment_name='MASTE
              join=True)
     return func_wrapper
 
-# TODO: Make sure different batch sizes on different machines get weighted accordingly
+# TODO: Make sure different batch sizes on different machines get weighted
+# accordingly

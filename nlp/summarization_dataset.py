@@ -25,13 +25,15 @@ class TextIterator:
 #     print("reading data file")
 #     document_iterator = SummarizationDataset(data_file).text_iterator()
 #     print("creating dictionary")
-#     word2vec_model = Word2Vec(document_iterator, size=embedding_dim, window=5, min_count=83, workers=4)
+#     word2vec_model = Word2Vec(document_iterator, size=embedding_dim, window=5,
+#                               min_count=83, workers=4)
 #     word2vec_model.save(word2vec_file)
     
 # create gensim dictionary using dataset
 # def save_gensim_dictionary(data_file, dictionary_file):
 #     print("reading data file")
-#     document_iterator = SummarizationDataset(data_file, aspect_file=aspect_file).text_iterator()
+#     document_iterator = SummarizationDataset(
+#         data_file, aspect_file=aspect_file).text_iterator()
 #     print("creating dictionary")
 #     dictionary = Dictionary(document_iterator, prune_at=50000)
 #     dictionary.save(dictionary_file)

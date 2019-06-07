@@ -6,7 +6,8 @@ class Tokenizer:
     """
     def __init__(self, vocab):
         """
-        Initializes tokenizer using input vocabulary in the form of an iterable object
+        Initializes tokenizer using input vocabulary in the form of an iterable
+        object
         """
         self._token2id = {}
         self._id2token = {}
@@ -17,7 +18,8 @@ class Tokenizer:
     def token2id(self, token, oov_token2id={}):
         """
         Converts token to index, using negative indices for oov tokens,
-        optionally working off of and adding to an already existing oov token to index mapping
+        optionally working off of and adding to an already existing oov token to
+        index mapping
         """
         if token in self._token2id.keys():
             return self._token2id[token]
@@ -54,6 +56,7 @@ class Tokenizer:
 
     def tensor2tokens(self, tensor, oov_id2token={}):
         """
-        Returns a generator of tokens mapped from the input tensor using self.id2token
+        Returns a generator of tokens mapped from the input tensor using
+        self.id2token
         """
         return (self.id2token(i) for i in tensor)

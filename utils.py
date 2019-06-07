@@ -71,3 +71,14 @@ def split_range(n, k, i):
     else:
         offset = (new_size_floor + 1)*additional + new_size_floor*(i-additional)
         return offset, offset + new_size_floor
+
+def nan_to_zero_hook(grad):
+    """
+    A backward hook function that sets all nan grads to zero
+    """
+    new_grad = grad.clone()
+    if (new_grad != new_grad).any():
+        print("Warning: NaN encountered!")
+        print(grad)
+    new_grad[new_grad != new_grad] = 0
+    return new_grad

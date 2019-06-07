@@ -16,8 +16,10 @@ class SummarizationBatcher(StandardBatcher):
 class SummarizationInstance(AbstractInstance):
     def __init__(self, raw_datapoint, tokenizer):
         text, oov_token2id = tokenizer.tokens2tensor(raw_datapoint['text'])
-        summary, _ = tokenizer.tokens2tensor(raw_datapoint['summary'], oov_token2id=oov_token2id)
-        self.datapoint = {"raw_datapoint":raw_datapoint, "oov_token2id":oov_token2id}
+        summary, _ = tokenizer.tokens2tensor(raw_datapoint['summary'],
+                                             oov_token2id=oov_token2id)
+        self.datapoint = {"raw_datapoint":raw_datapoint,
+                          "oov_token2id":oov_token2id}
         self.input = {
             'text':text,
             'text_length':torch.tensor(len(text)),

@@ -6,3 +6,5 @@
 #   calls train
 #   copy checkpoint directory
 
+def trainer():
+    pass
