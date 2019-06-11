@@ -82,3 +82,13 @@ def nan_to_zero_hook(grad):
         print(grad)
     new_grad[new_grad != new_grad] = 0
     return new_grad
+
+class MultiBatchGradMod:
+    def __init__(self, num_instances):
+        self.num_instances = num_instances
+
+    def __call__(self, parameters):
+        world_size = torch.distributed.get_world_size()\
+                     if torch.distributed.is_initialized() else 1
+        for p in parameters:
+            p.grad = p.grad*world_size/self.num_instances

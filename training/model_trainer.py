@@ -10,9 +10,11 @@
 #   contains classmethods to load each independently from a file
 #   contains classmethod to load checkpoint from folder
 
+import torch
+from utils import MultiBatchGradMod
 
-def train(checkpoint, loss_func, error_func=None, step_func=defualt_step_func,
-          grad_mod=None, verbose_every=1, write_every=1):
+def train(checkpoint, loss_func, error_func=None, step_func=None,
+          grad_mod=None):
     """
     Takes in (
         checkpoint - object containing model, optimizer, and batch_iterator, and
@@ -27,32 +29,42 @@ def train(checkpoint, loss_func, error_func=None, step_func=defualt_step_func,
             save the checkpoint,
     ) and trains model
     """
+    if step_func is None:
+        step_func = default_step_func
+    checkpoint.optimizer.zero_grad()
     for batch in checkpoint.batch_iterator:
         step_info = {"iterator_info":checkpoint.batch_iterator.iterator_info()}
-        train_loss, train_error = step_func(checkpoint.model, batch, loss_func,
-                                            error_func=error_func,
-                                            enable_grad=True, grad_mod=grad_mod)
-        step_info.update({
-            "train_loss":train_loss,
-            "train_error":train_error,
-        })
-        if step_info["iterator_info"]["batches_seen"] % write_every == 0:
-            if checkpoint.val_iterator is not None:
-                val_batch = next(val_iterator)
-                val_loss, val_error = step_func(checkpoint.model, val_batch,
-                                                loss_func,
-                                                error_func=error_func,
-                                                enable_grad=False,
-                                                grad_mod=grad_mod)
-                step_info.update({
-                    "val_loss":train_loss,
-                    "val_error":train_error,
-                })
+        # TODO: explain this
+        if checkpoint.batch_iterator.take_step():
+            checkpoint.model.accumulate_gradients = False
+            optimizer = checkpoint.optimizer
+            multi_batch_grad_mod = MultiBatchGradMod(
+            checkpoint.batch_iterator.iterator_info()["samples_in_batch"])
+            def grad_mod_wrapper(parameters):
+                multi_batch_grad_mod(parameters)
+                if grad_mod is not None:
+                    grad_mod(parameters)
+            gm = grad_mod_wrapper
+        else:
+            checkpoint.model.accumulate_gradients = True
+            optimizer = None
+            gm = None
+        train_step_info = step_func(checkpoint.model, batch, loss_func,
+                                    error_func=error_func, enable_grad=True,
+                                    optimizer=optimizer,
+                                    grad_mod=gm)
+        step_info.update({"train_step_info":train_step_info})
+        if checkpoint.val_iterator is not None:
+            val_batch = next(val_iterator)
+            val_step_info = step_func(checkpoint.model, val_batch, loss_func,
+                                      error_func=error_func, enable_grad=False,
+                                      optimizer=None, grad_mod=None)
+            step_info.update({"val_step_info":val_step_info})
         checkpoint.step_info(step_info)
 
 
 def default_step_func(model, batch, loss_func, error_func=None,
-                      enable_grad=True, grad_mod=None):
+                      enable_grad=True, optimizer=None, grad_mod=None):
     """
     Takes in (
         model,
@@ -69,15 +81,16 @@ def default_step_func(model, batch, loss_func, error_func=None,
         loss = loss_func(**outputs)
     with torch.autograd.no_grad():
         error = error_func(**outputs) if error_func is not None else None
-    if training:
-        self.optimizer.zero_grad()
+    if enable_grad:
         loss.backward()
-        if self.grad_mod is not None:
-            self.grad_mod(self.model.parameters())
-        self.optimizer.step()
+        if grad_mod is not None:
+            grad_mod(model.parameters())
+        if optimizer is not None:
+            optimizer.step()
+            optimizer.zero_grad()
     loss_value = loss.item()
     error_value = error.item() if error is not None else None
-    return loss_value, error_value
+    return {"loss":loss_value, "error":error_value}
 
 
 class Checkpoint:
@@ -96,7 +109,8 @@ class Checkpoint:
         self.val_iterator = val_iterator
 
     def step_info(self, info):
-        raise NotImplementedError
+        # TODO: make this better
+        print(info)
 
     def save(self, folder):
         raise NotImplementedError

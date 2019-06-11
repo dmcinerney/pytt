@@ -49,20 +49,23 @@ class StandardBatcher(AbstractBatcher):
                 return StandardBatch(list(instances)).to(devices)
             else:
                 return StandardBatch.init_batches_across_devices(
-                    list(instances), devices
-                )
+                    list(instances), devices)
 
     def out_batch_to_readable(self, output_batch):
         # TODO: implement this
         raise NotImplementedError
 
-    def batch_iterator(self, dataset, batch_size=None, random=None, epochs=None,
-                       iterations=None, indices_iterator=None, num_workers=0,
-                       devices=None):
+    def batch_iterator(self, dataset, batch_size=None, subbatches=None,
+                       random=None, epochs=None, iterations=None,
+                       indices_iterator=None, num_workers=0, devices=None):
+        """
+        TODO: fill out this comment
+        """
         return StandardBatchIterator(
             self,
             dataset,
             batch_size=batch_size,
+            subbatches=subbatches,
             random=random,
             epochs=epochs,
             iterations=iterations,
@@ -82,9 +85,13 @@ class StandardBatchIterator(AbstractBatchIterator):
             create and use a sequential indices_iterator (see
             SequentialIndicesIterator)
     It also gives an option to give an indices_iterator which should be an
-    instance of an AbstractIndicesIterator
+    instance of an AbstractIndicesIterator.
 
-    Iterator Queue Wrapper: This implementation uses a pytorch DataLoader, but
+    MultiBatchIndicesIterator: This implementation also allows for batches to be
+    split up and loaded to multiple devices and/or loaded sequentially with
+    delayed updates.
+
+    IteratorQueueWrapper: This implementation uses a pytorch DataLoader, but
     adds functionality such as allowing one to access an indices iterator
     corresponding to the state of the iterator when it loaded the indices for
     the current batch.  This is obtained by wrapping the indices iterator in a
@@ -95,57 +102,105 @@ class StandardBatchIterator(AbstractBatchIterator):
     to the correct state (the state just after the current batch's indices were
     loaded.)
 
-    Devices: This implementation also allows for batches to be split up and
-    loaded to multiple devices using the devices
-
-    Rank_worldsize: describes the rank and worldsize of the process_group,
-    automatically only selecting the indices applicable to the current process
-
     All functions without comments are described in the superclass.
     """
-    def __init__(self, batcher, dataset, batch_size=None, random=None,
-                 epochs=None, iterations=None, indices_iterator=None,
-                 num_workers=0, devices=None):
+    def __init__(self, batcher, dataset, batch_size=None, subbatches=None,
+                 random=None, epochs=None, iterations=None,
+                 indices_iterator=None, num_workers=0, devices=None):
         dataset = DatasetWrapper(dataset, batcher)
         if indices_iterator is not None:
+            # Checks that all of the indices_iterator initializer arguments are
+            #   None
+            # NOTE: subbatches is not included in this because it is used to
+            #   initialize the MultiBatchIndicesIterator, a wrapper, not the
+            #   indices_iterator itself
             if batch_size is not None or random is not None\
                or epochs is not None or iterations is not None:
                 raise Exception
-            self.indices_iterator = indices_iterator
         else:
-            if batch_size is None:
-                raise Exception
-            if random:
-                self.indices_iterator = RandomIndicesIterator(
-                    len(dataset), batch_size, epochs=epochs,
-                    iterations=iterations)
-            else:
-                self.indices_iterator = SequentialIndicesIterator(
-                    len(dataset), batch_size)
-        self.wrapped_indices_iterator = IteratorQueueWrapper(
-            copy.deepcopy(self.indices_iterator))
-        tmp_wrapped_indices_iterator = self.wrapped_indices_iterator
-        if dist.is_initialized():
-            tmp_wrapped_indices_iterator = IndicesIteratorDistributedWrapper(
-                tmp_wrapped_indices_iterator)
+            indices_iterator = self.init_indices_iterator(
+                len(dataset),
+                batch_size=batch_size,
+                random=random,
+                epochs=epochs,
+                iterations=iterations
+            )
+        # Does nothing when not distributed or split into subbatches
+        self.multi_batch_indices_iterator = MultiBatchIndicesIterator(
+            indices_iterator, subbatches_per_process=subbatches)
+        # Wraps the iterator in a queue to ensure the correct iterator state is
+        #   kept for logging and checkpointing information
+        # WARNING: this means that if multi_batch_indices_iterator is changed,
+        #   the dataloader will not change behavior, one would need to
+        #   reinitialize the BatchIterator
+        self.queue_wrapped_indices_iterator = IteratorQueueWrapper(
+            copy.deepcopy(self.multi_batch_indices_iterator))
+        # A callable object that uses the batcher to collate instances into a
+        #   batch
         collate_fn = CollateFnObject(batcher, devices)
+        # Creating the DataLoader object, but only using its iterator (in order
+        #   to start over, you need to reinitialize the BatchIterator)
         self.dataloaderiter = iter(DataLoader(
             dataset,
-            batch_sampler=tmp_wrapped_indices_iterator,
+            batch_sampler=self.queue_wrapped_indices_iterator,
             collate_fn=collate_fn,
             num_workers=num_workers
         ))
+
+    def init_indices_iterator(self, source_length, batch_size=None, random=None,
+                              epochs=None, iterations=None):
+        """
+        Initializes some common types of indices_iterators (only called if one
+        is not given)
+        """
+        # Checks that the batch_size is set because it is needed for both
+        #   IndicesIterator types
+        if batch_size is None:
+            raise Exception
+        if random:
+            indices_iterator = RandomIndicesIterator(
+                source_length, batch_size, epochs=epochs, iterations=iterations)
+        else:
+            # both of these are not needed for a SeqeuntialIndicesIterator
+            if epochs is not None or iterations is not None:
+                raise Exception
+            indices_iterator = SequentialIndicesIterator(source_length,
+                                                         batch_size)
+        return indices_iterator
 
     def __iter__(self):
         return self
 
     def __next__(self):
+        """
+        Gets the next batch and pops the corresponding iterator state for that
+        batch
+        """
         batch = next(self.dataloaderiter)
-        self.indices_iterator = self.wrapped_indices_iterator.pop_iterator()
+        self.multi_batch_indices_iterator =\
+            self.queue_wrapped_indices_iterator.pop_iterator()
         return batch
 
+    @property
+    def indices_iterator(self):
+        """
+        Gets the indices_iterator with the correct current state
+
+        Note: this is wrapped by multi_batch_indices_iterator, but the input to
+        this object is the unwrapped iterator, a subclass of
+        AbstractIndicesIterator unlike MultiBatchIndicesIterator
+        """
+        return self.multi_batch_indices_iterator.indices_iterator
+
     def iterator_info(self):
-        return self.indices_iterator.iterator_info()
+        return self.multi_batch_indices_iterator.iterator_info()
+
+    def take_step(self):
+        """
+        Checks whether the returned batch is the final subbatch in the actual
+        batch
+        """
+        return self.multi_batch_indices_iterator.take_step()
 
 class CollateFnObject:
     """
@@ -211,14 +266,22 @@ class IteratorQueueWrapper:
         """
         return self.iterators.get()
 
-class IndicesIteratorDistributedWrapper:
+# TODO: add more comments
+class MultiBatchIndicesIterator:
     """
     Wraps the indices iterator and only returns indices relevant to the current
-    process at each next call, all other functions are the same
+    process at each next call.  It also allows for batches to be split
+    sequentially with delayed updates inside each process.
     """
-    def __init__(self, indices_iterator):
+    def __init__(self, indices_iterator, subbatches_per_process=None):
         self.indices_iterator = indices_iterator
-        self.rank, self.worldsize = dist.get_rank(), dist.get_world_size()
+        self.subbatches_per_process = subbatches_per_process
+        self.subbatches_seen = 0
+        self.samples_in_batch_seen = 0
+        if dist.is_initialized():
+            self.rank, self.worldsize = dist.get_rank(), dist.get_world_size()
+        self.current_batch_indices = None
+        self.current_process_indices = None
 
     def __iter__(self):
         return self
@@ -228,9 +291,51 @@ class IndicesIteratorDistributedWrapper:
         Selects only the subset of the batch as a function of the rank and
         worldsize of the current process group
         """
-        batch_indices = next(self.indices_iterator)
-        i, j = split_range(len(batch_indices), self.worldsize, self.rank)
-        return batch_indices[i:j]
+        if self.take_step():
+            self.subbatches_seen = 0
+            self.samples_in_batch_seen = 0
+        if self.subbatches_seen == 0:
+            self.current_batch_indices = next(self.indices_iterator)
+            if dist.is_initialized():
+                i, j = split_range(len(self.current_batch_indices), self.worldsize,
+                                   self.rank)
+                self.current_process_indices = self.current_batch_indices[i:j]
+            else:
+                self.current_process_indices = self.current_batch_indices
+        if self.subbatches_per_process is not None:
+            i, j = split_range(len(self.current_process_indices),
+                               self.subbatches_per_process,
+                               self.subbatches_seen)
+            indices = self.current_process_indices[i:j]
+        else:
+            indices = self.current_process_indices
+        self.subbatches_seen += 1
+        self.samples_in_batch_seen += len(indices)
+        return indices
+
+    def take_step(self):
+        return self.subbatches_per_process is None\
+               or self.subbatches_seen >= self.subbatches_per_process
+
+    def iterator_info(self):
+        info = self.indices_iterator.iterator_info()
+        if self.subbatches_per_process is not None:
+            if not self.take_step():
+                info["batches_seen"] -= 1
+                info["samples_seen"] -= len(self.current_batch_indices)
+                info["samples_in_batch_seen"] = self.samples_in_batch_seen
+                info["subbatches_seen"] = self.subbatches_seen
+            else:
+                info["samples_in_batch_seen"] = 0
+                info["subbatches_seen"] = 0
+            info["subbatches_per_process"] = self.subbatches_per_process
+        if dist.is_initialized():
+            info["rank"] = self.rank
+            info["worldsize"] = self.worldsize
+            info["samples_per_process"] = len(self.current_process_indices)
+        info["samples_in_batch"] = len(self.current_batch_indices)
+        return info
+
 
 class SequentialIndicesIterator(AbstractIndicesIterator):
     """
@@ -293,7 +398,7 @@ class RandomIndicesIterator(AbstractIndicesIterator):
         self.epochs_seen = 0
         self.num_epochs = epochs
         self.num_iterations = iterations
-        self.replacement = self.check_flags_return_if_replacement(
+        self.replacement = self.get_replacement(
             epochs, iterations)
         self.source_length = source_length
         self.sampler = RandomSampler(range(source_length),

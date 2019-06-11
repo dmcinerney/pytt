@@ -25,7 +25,9 @@ from torch import nn
 from utils import get_random_state, seed_state
 from distributed.distributed import distributed_wrapper, setup
 from torch.nn.parallel import DistributedDataParallel as DDP
+from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
 from torch.optim import Adam
+from training.model_trainer import train, Checkpoint
 
 class Model(nn.Module):
     def __init__(self):
@@ -33,19 +35,25 @@ class Model(nn.Module):
         self.p = nn.Linear(1,1)
     
     def forward(self, batch):
-        print("forward")
-        print(self.p.weight)
-        return self.p(batch.inputs['text'][:, :1].float()).mean()
+        batch.to(next(iter(self.p.parameters())).device)
+#         print("forward")
+        # print(self.p.weight)
+        return dict(output=self.p(batch.inputs['text'][:, :1].float()))
+
+def loss_func(output):
+    return output.sum()
 
 def iterate(batcher, raw_dataset):
     rank_worldsize = (torch.distributed.get_rank(), torch.distributed.get_world_size()) if torch.distributed.is_initialized() else None
     print(rank_worldsize)
     model = Model().cuda()
     if rank_worldsize is not None:
-        model = DDP(model.to(rank_worldsize[0]), device_ids=[rank_worldsize[0]])
+        # model = DDP(model.to(rank_worldsize[0]), device_ids=[rank_worldsize[0]])
+        model = LDDP(model.to(rank_worldsize[0]), rank_worldsize[1])
     optimizer = Adam([p for p in model.parameters()])
-    batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=15, random=True, iterations=200, num_workers=5)#, devices=['cuda:0', 'cuda:1'])
+    batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=15, subbatches=2, random=True, iterations=200, num_workers=5)#, devices=['cuda:0', 'cuda:1'])
     for batch in batch_iterator:
+#         print(batch)
         print(batch_iterator.iterator_info(), len(batch_iterator.indices_iterator), len(raw_dataset))
         if rank_worldsize is not None:
             batch.to('cuda:'+str(rank_worldsize[0]))
@@ -73,15 +81,34 @@ def iterate(batcher, raw_dataset):
             break
     print("done")
 
-if __name__ == '__main__':
-    seed_state()
-#     torch.multiprocessing.set_start_method("spawn")
-    raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
-    tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
-    batcher = SummarizationBatcher(tokenizer)
+# if __name__ == '__main__':
+#     seed_state()
+# #     torch.multiprocessing.set_start_method("spawn")
+#     raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
+#     tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
+#     batcher = SummarizationBatcher(tokenizer)
 #     nprocs = 2
 #     distributed_iterate = distributed_wrapper(iterate, nprocs, random_state=get_random_state())
 #     distributed_iterate(batcher, raw_dataset)
-#     setup(0,1)
-    iterate(batcher, raw_dataset)
+# #     setup(0,1)
+#     # iterate(batcher, raw_dataset)
+def spawn_function():
+    rank = torch.distributed.get_rank()
+    worldsize = torch.distributed.get_world_size()
+    model = LDDP(Model().to(rank), worldsize)
+    optimizer = Adam([p for p in model.parameters()])
+    raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
+    tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
+    batcher = SummarizationBatcher(tokenizer)
+    batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=15, subbatches=2, random=True, iterations=200, num_workers=5)
+    checkpoint = Checkpoint(model, optimizer, batch_iterator)
+    train(checkpoint, loss_func)
 
+if __name__ == '__main__':
+    seed_state()
+#     torch.multiprocessing.set_start_method("spawn")
+    nprocs = 2
+    distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
+    distributed_spawn_function()
+#     setup(0,1)
+    # iterate(batcher, raw_dataset)
