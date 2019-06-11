@@ -297,8 +297,8 @@ class MultiBatchIndicesIterator:
         if self.subbatches_seen == 0:
             self.current_batch_indices = next(self.indices_iterator)
             if dist.is_initialized():
-                i, j = split_range(len(self.current_batch_indices), self.worldsize,
-                                   self.rank)
+                i, j = split_range(len(self.current_batch_indices),
+                                   self.worldsize, self.rank)
                 self.current_process_indices = self.current_batch_indices[i:j]
             else:
                 self.current_process_indices = self.current_batch_indices
