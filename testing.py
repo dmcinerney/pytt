@@ -27,7 +27,7 @@ from distributed.distributed import distributed_wrapper, setup
 from torch.nn.parallel import DistributedDataParallel as DDP
 from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
 from torch.optim import Adam
-from training.model_trainer import train, Checkpoint
+from training.model_trainer import Trainer
 
 class Model(nn.Module):
     def __init__(self):
@@ -93,22 +93,26 @@ def iterate(batcher, raw_dataset):
 # #     setup(0,1)
 #     # iterate(batcher, raw_dataset)
 def spawn_function():
-    rank = torch.distributed.get_rank()
-    worldsize = torch.distributed.get_world_size()
-    model = LDDP(Model().to(rank), worldsize)
+    model = Model()
+    if torch.distributed.is_initialized():
+        rank = torch.distributed.get_rank()
+        worldsize = torch.distributed.get_world_size()
+        model = LDDP(model.to(rank), worldsize)
     optimizer = Adam([p for p in model.parameters()])
     raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
     tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
     batcher = SummarizationBatcher(tokenizer)
-    batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=15, subbatches=2, random=True, iterations=200, num_workers=5)
-    checkpoint = Checkpoint(model, optimizer, batch_iterator)
-    train(checkpoint, loss_func)
+    batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=15, subbatches=5, random=True, iterations=200, num_workers=5)
+    trainer = Trainer(model, optimizer, batch_iterator)
+    trainer.train(loss_func)
 
 if __name__ == '__main__':
     seed_state()
 #     torch.multiprocessing.set_start_method("spawn")
-    nprocs = 2
-    distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
-    distributed_spawn_function()
+#     nprocs = 2
+#     distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
+#     distributed_spawn_function()
+#     setup(0,1)
+    spawn_function()
 #     setup(0,1)
     # iterate(batcher, raw_dataset)

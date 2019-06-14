@@ -275,6 +275,7 @@ class MultiBatchIndicesIterator:
     """
     def __init__(self, indices_iterator, subbatches_per_process=None):
         self.indices_iterator = indices_iterator
+        self.indices_iterator_lookahead = copy.deepcopy(self.indices_iterator)
         self.subbatches_per_process = subbatches_per_process
         self.subbatches_seen = 0
         self.samples_in_batch_seen = 0
@@ -295,7 +296,7 @@ class MultiBatchIndicesIterator:
             self.subbatches_seen = 0
             self.samples_in_batch_seen = 0
         if self.subbatches_seen == 0:
-            self.current_batch_indices = next(self.indices_iterator)
+            self.current_batch_indices = next(self.indices_iterator_lookahead)
             if dist.is_initialized():
                 i, j = split_range(len(self.current_batch_indices),
                                    self.worldsize, self.rank)
@@ -311,6 +312,8 @@ class MultiBatchIndicesIterator:
             indices = self.current_process_indices
         self.subbatches_seen += 1
         self.samples_in_batch_seen += len(indices)
+        if self.take_step():
+            next(self.indices_iterator)
         return indices
 
     def take_step(self):
@@ -320,14 +323,8 @@ class MultiBatchIndicesIterator:
     def iterator_info(self):
         info = self.indices_iterator.iterator_info()
         if self.subbatches_per_process is not None:
-            if not self.take_step():
-                info["batches_seen"] -= 1
-                info["samples_seen"] -= len(self.current_batch_indices)
-                info["samples_in_batch_seen"] = self.samples_in_batch_seen
-                info["subbatches_seen"] = self.subbatches_seen
-            else:
-                info["samples_in_batch_seen"] = 0
-                info["subbatches_seen"] = 0
+            info["samples_in_batch_seen"] = self.samples_in_batch_seen
+            info["subbatches_seen"] = self.subbatches_seen
             info["subbatches_per_process"] = self.subbatches_per_process
         if dist.is_initialized():
             info["rank"] = self.rank
