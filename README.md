@@ -2,7 +2,7 @@
 
 NOTE: This package is actively under construction!
 
-'pytt' is a package designed for training and testing (tt) pytorch models, offering a generalized, structured, and extensible way to batch data, load batches (using a pytorch dataloader as a backend with multithreading support), train model, checkpoint training, and test model.  It provides multi-gpu and delayed updates support, and any model trained with this is completely reproduceable because random states are a part of the checkpointing.
+`pytt` is a package designed for training and testing (tt) pytorch models, offering a generalized, structured, and extensible way to batch data, load batches (using a pytorch dataloader as a backend with multithreading support), train model, checkpoint training, and test model.  It provides multi-gpu and delayed updates support, and any model trained with this is completely reproduceable because random states are a part of the checkpointing.
 
 Some examples of options for customization:
 * `pytt.batching.abstract_batcher.AbstractIndicesIterator` can be overridden and used to create an object that can be passed into the `pytt.batching.standard_batcher.Batcher.batch_iterator` method
