@@ -311,6 +311,7 @@ class MultiBatchIndicesIterator:
         else:
             indices = self.current_process_indices
         self.subbatches_seen += 1
+        self.samples_in_subbatch = len(indices)
         self.samples_in_batch_seen += len(indices)
         if self.take_step():
             next(self.indices_iterator)
@@ -322,9 +323,9 @@ class MultiBatchIndicesIterator:
 
     def iterator_info(self):
         info = self.indices_iterator.iterator_info()
+        info["take_step"] = self.take_step()
         if self.subbatches_per_process is not None:
-            info["samples_in_batch_seen"] = self.samples_in_batch_seen
-            info["subbatches_seen"] = self.subbatches_seen
+            info["samples_in_subbatch"] = self.samples_in_subbatch
             info["subbatches_per_process"] = self.subbatches_per_process
         if dist.is_initialized():
             info["rank"] = self.rank

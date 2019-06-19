@@ -12,11 +12,11 @@
 
 import torch
 from utils import MultiBatchGradMod
-from logger import Logger
+from logger import logger
 from fairseq.legacy_distributed_data_parallel\
     import LegacyDistributedDataParallel as LDDP
-from distributed.distributed import collect_tensors_on_rank0
-import copy
+from training.iteration_info import IterationInfo
+from training.history import History
 
 
 # TODO: fix and add comments
@@ -30,44 +30,58 @@ class Trainer:
         raise NotImplementedError
 
     def __init__(self, model, optimizer, batch_iterator, val_iterator=None,
-                 val_every=1):
+                 val_every=1, history=History()):
         self.model = model
         self.optimizer = optimizer
         self.batch_iterator = batch_iterator
         self.val_iterator = val_iterator
         self.val_every = val_every
-        self.history = []
-        self.accumulated_loss = 0
-        self.accumulated_error = 0
+        self.history = history
 
-    def train(self, loss_func, error_func=None, grad_mod=None):
+    def train(self, loss_func, error_func=None, grad_mod=None,
+              iter_info_class=IterationInfo):
         for batch in self.batch_iterator:
-            self.iteration(batch, loss_func, error_func=error_func,
-                           grad_mod=grad_mod)
+            iteration_info = iter_info_class()
+            self.iteration(iteration_info, batch, loss_func,
+                           error_func=error_func, grad_mod=grad_mod)
+            if self.history is not None:
+                self.history.register_iteration(iteration_info)
 
-    def iteration(self, batch, loss_func, error_func=None, grad_mod=None):
-        iteration_info = {}
-        iterator_info = self.batch_iterator.iterator_info()
-        iteration_info["iterator_info"] = iterator_info
-        train_process_dict = self.process_batch(batch, loss_func,
-                                                error_func=error_func,
-                                                enable_grad=True)
-        iteration_info["train_process_dict"] = train_process_dict
-        self.step(train_process_dict["loss"], grad_mod=grad_mod)
+    def iteration(self, iteration_info, batch, loss_func, error_func=None,
+                  grad_mod=None):
+        # record iterator info
+        iteration_info.set_iterator_info(self.batch_iterator.iterator_info())
+
+        # process training batch
+        train_info = self.process_batch(batch, loss_func, error_func=error_func,
+                                        enable_grad=True)
+        # record training info
+        iteration_info.set_train_info(
+            {k:v.item() for k,v in train_info.items()})
+
+        # update with gradients if the iterator says to
+        self.step(train_info["loss"], grad_mod=grad_mod)
+
+        # record validation info if val_iterator is given and it is the right
+        #   step
         if self.val_iterator is not None\
            and (iterator_info["batches_seen"] % val_every) == 0:
-            val_batch = next(self.val_iterator)
-            val_process_dict = self.process_batch(val_batch, loss_func,
-                                                  error_func=error_func,
-                                                  enable_grad=False)
-            iteration_info["val_process_dict"] = val_process_dict
-        self.register_iteration(iteration_info)
+            # process validation batch
+            val_info = self.process_batch(next(self.val_iterator), loss_func,
+                                          error_func=error_func,
+                                          enable_grad=False)
+            # record validation info
+            iteration_info.set_val_info(
+                {k:v.item() for k,v in val_info.items()})
 
     def process_batch(self, batch, loss_func, error_func=None,
                       enable_grad=True):
         with torch.set_grad_enabled(enable_grad):
+            # run batch through the model
             outputs = self.model(batch)
+            # calculate loss using the outputs of the model
             loss = loss_func(**outputs)
+        # if error function is given, calculate error
         if error_func is not None:
             with torch.autograd.no_grad():
                 error = error_func(**outputs)
@@ -90,107 +104,6 @@ class Trainer:
                 grad_mod(list(self.model.parameters()))
             self.optimizer.step()
             self.optimizer.zero_grad()
-
-    def register_iteration(self, iteration_info):
-        iteration_log = {}
-        
-        # put everything into the log, calling item on scalar tensors
-        iteration_log["iterator_info"] = iteration_info["iterator_info"]
-        iteration_log["train_process_dict"] = {
-            k:v.item() for k,v in iteration_info["train_process_dict"].items()}
-        if "val_process_dict" in iteration_info.keys():
-            iteration_log["val_process_dict"] = {
-                k:v.item() for k,v in iteration_info["val_process_dict"].items()}
-        
-        # keep track of accumulated loss and error per batch
-        self.accumulated_loss += iteration_log["train_process_dict"]["loss"]
-        iteration_log["train_process_dict"]["accumulated_loss"] =\
-            self.accumulated_loss
-        if "error" in iteration_log["train_process_dict"].keys():
-            self.accumulated_error += iteration_log["train_process_dict"]["error"]
-            iteration_log["train_process_dict"]["accumulated_error"] =\
-                self.accumulated_error
-        if self.batch_iterator.take_step():
-            self.accumulated_loss = 0
-            self.accumulated_error = 0
-        
-        # register log in the history and print out log, keeping track of distributed logs
-        if torch.distributed.is_initialized():
-            collected = self.collect_logs_on_rank0(iteration_log)
-            if collected is not None:
-                coalesced_log, all_logs = collected
-                self.history.append((coalesced_log, all_logs))
-                self.log_iteration(coalesced_log)
-            else:
-                self.history.append(iteration_log)
-        else:
-            self.history.append(iteration_log)
-            self.log_iteration(iteration_log)
-
-    def log_iteration(self, iteration_log):
-        if "subbatches_seen" in iteration_log["iterator_info"].keys():
-            subbatch_info = "\tbatches_seen: "\
-                +str(iteration_log["iterator_info"]["batches_seen"])\
-                +", samples_seen: "\
-                +str(iteration_log["iterator_info"]["samples_seen"])\
-                +", subbatches_seen: "\
-                +str(iteration_log["iterator_info"]["subbatches_seen"])\
-                +", samples_in_batch_seen: "\
-                +str(iteration_log["iterator_info"]["samples_in_batch_seen"])
-            Logger.log(subbatch_info)
-        if self.batch_iterator.take_step():
-            step_info = "batches_seen: "\
-                +str(iteration_log["iterator_info"]["batches_seen"])\
-                +", samples_seen: "\
-                +str(iteration_log["iterator_info"]["samples_seen"])\
-                +", accumulated_loss: "\
-                +str(iteration_log["train_process_dict"]["accumulated_loss"])
-            Logger.log(step_info)
-    
-    def collect_logs_on_rank0(self, iteration_log):
-        tensors = collect_tensors_on_rank0(self.iterlog_to_tensor(iteration_log))
-        if tensors is None:
-            return None
-        logs = [self.tensor_to_iterlog(tensor, iteration_log) for tensor in tensors]
-        coalesced_log = copy.deepcopy(logs[0])
-        add_along_keys = []
-        for k1 in iteration_log.keys():
-            if k1 == "iterator_info":
-                if "samples_in_batch_seen" in iteration_log[k1].keys():
-                    add_along_keys.append((k1, "samples_in_batch_seen"))
-                continue
-            for k2 in iteration_log[k1].keys():
-                add_along_keys.append((k1, k2))
-        for k1,k2 in add_along_keys:
-            coalesced_log[k1][k2] = 0
-            for log in logs:
-                coalesced_log[k1][k2] += log[k1][k2]
-        return coalesced_log, logs
-
-    def iterlog_to_tensor(self, iteration_log):
-        list_of_floats = []
-        keys = ['iterator_info', 'train_process_dict']
-        if self.val_iterator is not None:
-            keys.apppend('val_process_dict')
-        for iter_log_key in keys:
-            list_of_floats += [
-                v for k,v in sorted(iteration_log[iter_log_key].items(),
-                                    key=lambda kv: kv[0])
-            ]
-        return torch.tensor(list_of_floats)
-
-    def tensor_to_iterlog(self, tensor, iteration_log_template):
-        iteration_log = copy.deepcopy(iteration_log_template)
-        tensor_iter = iter(tensor)
-        keys = ['iterator_info', 'train_process_dict']
-        if self.val_iterator is not None:
-            keys.apppend('val_process_dict')
-        for iter_log_key in keys:
-            cast = int if iter_log_key is 'iterator_info' else float
-            for k,v in sorted(iteration_log[iter_log_key].items(),
-                              key=lambda kv: kv[0]):
-                iteration_log[iter_log_key][k] = cast(next(tensor_iter).item())
-        return iteration_log
 
     def save(self, folder):
         raise NotImplementedError

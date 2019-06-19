@@ -28,6 +28,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
 from torch.optim import Adam
 from training.model_trainer import Trainer
+from logger import logger
 
 class Model(nn.Module):
     def __init__(self):
@@ -102,17 +103,16 @@ def spawn_function():
     raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
     tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
     batcher = SummarizationBatcher(tokenizer)
-    batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=15, subbatches=5, random=True, iterations=200, num_workers=5)
+    batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=15, subbatches=None, random=True, iterations=200, num_workers=5)
     trainer = Trainer(model, optimizer, batch_iterator)
+    logger.set_verbosity(2)
     trainer.train(loss_func)
 
 if __name__ == '__main__':
     seed_state()
 #     torch.multiprocessing.set_start_method("spawn")
-#     nprocs = 2
-#     distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
-#     distributed_spawn_function()
-#     setup(0,1)
-    spawn_function()
-#     setup(0,1)
-    # iterate(batcher, raw_dataset)
+    nprocs = 2
+    distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
+    distributed_spawn_function()
+    # setup(0,1)
+    # spawn_function()
