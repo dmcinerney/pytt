@@ -27,7 +27,7 @@ from pytt.distributed import distributed_wrapper, setup
 from torch.nn.parallel import DistributedDataParallel as DDP
 from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
 from torch.optim import Adam
-from pytt.training.model_trainer import Trainer
+from pytt.training.trainer import Trainer
 from pytt.logger import logger
 
 class Model(nn.Module):
