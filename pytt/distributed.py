@@ -1,8 +1,8 @@
 import os
+import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from utils import set_random_state
-import torch
+from pytt.utils import set_random_state
 
 
 def setup(rank, world_size, random_state=None, environment_name='MASTER',

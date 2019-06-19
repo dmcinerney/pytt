@@ -1,6 +1,6 @@
-from torch.utils.data import Sampler
 import pickle as pkl
-from utils import split
+from torch.utils.data import Sampler
+from pytt.utils import split
 
 class AbstractBatcher:
     """

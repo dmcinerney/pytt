@@ -11,12 +11,12 @@
 #   contains classmethod to load checkpoint from folder
 
 import torch
-from utils import MultiBatchGradMod
-from logger import logger
 from fairseq.legacy_distributed_data_parallel\
     import LegacyDistributedDataParallel as LDDP
-from training.iteration_info import IterationInfo
-from training.history import History
+from pytt.utils import MultiBatchGradMod
+from pytt.logger import logger
+from pytt.training.iteration_info import IterationInfo
+from pytt.training.history import History
 
 
 # TODO: fix and add comments

@@ -1,8 +1,6 @@
-from batching.abstract_batcher import AbstractBatcher,\
-                                      AbstractBatchIterator,\
-                                      AbstractInstance,\
-                                      AbstractBatch,\
-                                      AbstractIndicesIterator
+import math
+import copy
+import queue
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -12,10 +10,12 @@ from torch.utils.data import Dataset,\
                              Sampler,\
                              SequentialSampler,\
                              RandomSampler
-import copy
-import queue
-import math
-from utils import split_range
+from pytt.batching.abstract_batcher import AbstractBatcher,\
+                                           AbstractBatchIterator,\
+                                           AbstractInstance,\
+                                           AbstractBatch,\
+                                           AbstractIndicesIterator
+from pytt.utils import split_range
 
 
 class StandardBatcher(AbstractBatcher):

@@ -18,17 +18,17 @@
 # for batch in batch_iterator2:
 #     print(batch_iterator2.iterator_info(), batch_iterator2.indices_iterator.replacement, len(batch_iterator2.indices_iterator), len(raw_dataset))
 import torch
-from nlp.summarization_dataset import SummarizationDataset, load_vocab
-from nlp.summarization_batcher import SummarizationBatcher
-from nlp.tokenizer import Tokenizer
+from summarization.summarization_dataset import SummarizationDataset, load_vocab
+from summarization.summarization_batcher import SummarizationBatcher
+from pytt.nlp.tokenizer import Tokenizer
 from torch import nn
-from utils import get_random_state, seed_state
-from distributed.distributed import distributed_wrapper, setup
+from pytt.utils import get_random_state, seed_state
+from pytt.distributed import distributed_wrapper, setup
 from torch.nn.parallel import DistributedDataParallel as DDP
 from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
 from torch.optim import Adam
-from training.model_trainer import Trainer
-from logger import logger
+from pytt.training.model_trainer import Trainer
+from pytt.logger import logger
 
 class Model(nn.Module):
     def __init__(self):

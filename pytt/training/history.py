@@ -1,5 +1,5 @@
 import torch.distributed as dist
-from distributed.distributed import collect_tensors_on_rank0
+from pytt.distributed import collect_tensors_on_rank0
 
 class History:
     def __init__(self):
@@ -24,7 +24,7 @@ class History:
                     self._history = []
             else:
                 self._history[-1].log_iteration()
-    
+
     def collect_info_on_rank0(self, iteration_info):
         tensors = collect_tensors_on_rank0(iteration_info.to_tensor())
         if tensors is None:

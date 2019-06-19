@@ -1,7 +1,7 @@
+import math
+import pickle as pkl
 import numpy as np
 import torch
-import pickle as pkl
-import math
 
 def seed_state(seed=0):
     """

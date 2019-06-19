@@ -6,7 +6,7 @@
 #   calls train
 #   copy checkpoint directory
 
-from logger import logger
+from pytt.logger import logger
 
 class TrainingController:
     def __init__(self, static_parameters, sections, folder):

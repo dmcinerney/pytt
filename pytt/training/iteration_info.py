@@ -1,7 +1,7 @@
 import copy
-import torch.distributed as dist
-from logger import logger
 import torch
+import torch.distributed as dist
+from pytt.logger import logger
 
 
 # TODO: add comments

@@ -1,5 +1,5 @@
-from batching.abstract_batcher import AbstractInstance
-from batching.standard_batcher import StandardBatcher, StandardBatch
+from pytt.batching.abstract_batcher import AbstractInstance
+from pytt.batching.standard_batcher import StandardBatcher, StandardBatch
 import torch
 
 class SummarizationBatcher(StandardBatcher):

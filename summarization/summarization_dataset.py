@@ -1,4 +1,4 @@
-from preprocessing.raw_dataset import RawDataset
+from pytt.preprocessing.raw_dataset import RawDataset
 import pandas as pd
 # from gensim.models import Word2Vec
 # from gensim.corpora import Dictionary
