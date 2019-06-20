@@ -20,6 +20,7 @@
 import torch
 from summarization.summarization_dataset import SummarizationDataset, load_vocab
 from summarization.summarization_batcher import SummarizationBatcher
+from pytt.batching.indices_iterator import init_indices_iterator
 from pytt.nlp.tokenizer import Tokenizer
 from torch import nn
 from pytt.utils import get_random_state, seed_state
@@ -29,6 +30,7 @@ from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParall
 from torch.optim import Adam
 from pytt.training.trainer import Trainer
 from pytt.logger import logger
+from pytt.training.training_controller import AbstractTrainingController
 
 class Model(nn.Module):
     def __init__(self):
@@ -103,10 +105,12 @@ def spawn_function():
     raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
     tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
     batcher = SummarizationBatcher(tokenizer)
-    batch_iterator = batcher.batch_iterator(raw_dataset, batch_size=15, subbatches=None, random=True, iterations=200, num_workers=5)
+    batch_iterator = batcher.batch_iterator(raw_dataset, init_indices_iterator(len(raw_dataset), batch_size=15, random=True, iterations=200), subbatches=None, num_workers=5)
     trainer = Trainer(model, optimizer, batch_iterator)
     logger.set_verbosity(2)
     trainer.train(loss_func)
+
+
 
 if __name__ == '__main__':
     seed_state()

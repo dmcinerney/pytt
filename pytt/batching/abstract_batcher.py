@@ -83,6 +83,12 @@ class AbstractBatchIterator:
         """
         raise NotImplementedError
 
+    def save_state_dict(self):
+        raise NotImplementedError
+
+    def load_state_dict(self, state_dict):
+        raise NotImplementedError
+
 
 class AbstractInstance:
     """
@@ -209,52 +215,3 @@ class AbstractOutputBatch:
         Returns a list of AbstractOutputInstance objects
         """
         raise NotImplementedError
-
-
-# possible helper for batch iterator
-class AbstractIndicesIterator(Sampler):
-    """
-    Handles iterating of indices of the dataset
-
-    This is an abstract class that allows a very flexible framework for creating
-    indices iterators.  See standard_batchers.py for examples of standard
-    implementations of this abstract architecture.
-    """
-    @staticmethod
-    def load(filename):
-        """
-        Loads an IndicesIterator from file using pickle
-        """
-        with open(filename, 'rb') as f:
-            return pkl.load(f)
-
-    def __init__(self, source_length):
-        raise NotImplementedError
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        """
-        Returns the next batch indices
-        """
-        raise NotImplementedError
-
-    def __len__(self):
-        """
-        Returns the length of the iterator
-        """
-        raise NotImplementedError
-
-    def iterator_info(self):
-        """
-        Returns a dictionary describing what has been already iterated through
-        """
-        raise NotImplementedError
-
-    def save(self, filename):
-        """
-        Saves an IndicesIterator to file using pickle
-        """
-        with open(filename, 'wb') as f:
-            pkl.dump(self, f)

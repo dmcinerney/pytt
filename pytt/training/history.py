@@ -1,9 +1,14 @@
 import torch.distributed as dist
+from pytt.utils import read_pickle, write_pickle
 from pytt.distributed import collect_tensors_on_rank0
 
 class History:
-    def __init__(self):
-        self._history = []
+    @classmethod
+    def load(cls, filename):
+        return cls(read_pickle(filename))
+
+    def __init__(self, history=[]):
+        self._history = history
 
     def register_iteration(self, iteration_info):
         if len(self._history) == 0\
@@ -41,4 +46,4 @@ class History:
             return self._history[:-1]
 
     def save(self, filename):
-        raise NotImplementedError
+        write_pickle(self.history, filename)
