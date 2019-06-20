@@ -95,6 +95,9 @@ def iterate(batcher, raw_dataset):
 #     distributed_iterate(batcher, raw_dataset)
 # #     setup(0,1)
 #     # iterate(batcher, raw_dataset)
+def error_func(*args, **kwargs):
+    return {'error': torch.tensor(2)}
+
 def spawn_function():
     model = Model()
     if torch.distributed.is_initialized():
@@ -108,8 +111,7 @@ def spawn_function():
     batch_iterator = batcher.batch_iterator(raw_dataset, init_indices_iterator(len(raw_dataset), batch_size=15, random=True, iterations=200), subbatches=None, num_workers=5)
     trainer = Trainer(model, optimizer, batch_iterator)
     logger.set_verbosity(2)
-    trainer.train(loss_func)
-
+    trainer.train(loss_func, statistics_func=error_func)
 
 
 if __name__ == '__main__':

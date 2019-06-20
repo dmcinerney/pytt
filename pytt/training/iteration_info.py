@@ -124,12 +124,10 @@ class IterationInfo:
     def log_fullbatch(self, base):
         num_instances = self.iterator_info["samples_in_batch"]
         step_info = base\
-            +", train batch size: "+str(num_instances)\
-            +", train loss per instance: "\
-            +str(self.train_info["loss"]/num_instances)
-        if "error" in self.train_info.keys():
-            step_info += ", train error per instance: "\
-                +str(self.train_info["error"]/num_instances)
+            +", train batch size: "+str(num_instances)
+        for k,v in self.train_info.items():
+            step_info += ", train %s per instance: " % k\
+                +str(v/num_instances)
         if self.val_info is not None:
             step_info += ", (implement printing val info)"
         logger.log(step_info)

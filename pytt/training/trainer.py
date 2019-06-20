@@ -1,10 +1,10 @@
 # trains model
 # train function
-#   takes in (checkpoint object, loss_func, optional error_func, optional custom
+#   takes in (checkpoint object, loss_func, optional statistics_func, optional custom
 #       step function, other options)
 #   optionally saves checkpoint object
 # contains a step function
-#   takes in model, inputs and labels, loss_func, error_func
+#   takes in model, inputs and labels, loss_func, statistics_func
 # Checkpoint object
 #   contains a model, optimizer, batch_iterator, and optional val_iterator
 #   contains classmethods to load each independently from a file
@@ -38,23 +38,24 @@ class Trainer:
         self.checkpoint_folder = checkpoint_folder
         self.checkpoint_every = checkpoint_every
 
-    def train(self, loss_func, error_func=None, grad_mod=None,
+    def train(self, loss_func, statistics_func=None, grad_mod=None,
               iter_info_class=IterationInfo):
         for batch in self.batch_iterator:
             iteration_info = iter_info_class()
             self.iteration(iteration_info, batch, loss_func,
-                           error_func=error_func, grad_mod=grad_mod)
+                           statistics_func=statistics_func, grad_mod=grad_mod)
 
-    def iteration(self, iteration_info, batch, loss_func, error_func=None,
+    def iteration(self, iteration_info, batch, loss_func, statistics_func=None,
                   grad_mod=None):
         self.iteration_trainstep(iteration_info, batch, loss_func,
-                                 error_func=error_func, grad_mod=grad_mod)
+                                 statistics_func=statistics_func,
+                                 grad_mod=grad_mod)
         if self.val_iterator is not None\
            and iteration_info.iterator_info["take_step"]\
            and (iteration_info.iterator_info["batches_seen"]
                 % self.val_every) == 0:
             self.iteration_valstep(iteration_info, loss_func,
-                                   error_func=error_func)
+                                   statistics_func=statistics_func)
         if self.history is not None:
             self.history.register_iteration(iteration_info)
         if self.checkpoint_folder is not None\
@@ -64,12 +65,13 @@ class Trainer:
             self.save_state(self.checkpoint_folder)
 
     def iteration_trainstep(self, iteration_info, batch, loss_func,
-                            error_func=None, grad_mod=None):
+                            statistics_func=None, grad_mod=None):
         # record iterator info
         iteration_info.set_iterator_info(self.batch_iterator.iterator_info())
 
         # process training batch
-        train_info = self.process_batch(batch, loss_func, error_func=error_func,
+        train_info = self.process_batch(batch, loss_func,
+                                        statistics_func=statistics_func,
                                         enable_grad=True)
         # record training info
         iteration_info.set_train_info(
@@ -80,16 +82,17 @@ class Trainer:
         # take step if the iterator says to
         self.step(grad_mod=grad_mod)
 
-    def iteration_valstep(self, iteration_info, loss_func, error_func=None):
+    def iteration_valstep(self, iteration_info, loss_func,
+                          statistics_func=None):
         # process validation batch
         val_info = self.process_batch(next(self.val_iterator), loss_func,
-                                      error_func=error_func,
+                                      statistics_func=statistics_func,
                                       enable_grad=False)
         # record validation info
         iteration_info.set_val_info(
             {k:v.item() for k,v in val_info.items()})
 
-    def process_batch(self, batch, loss_func, error_func=None,
+    def process_batch(self, batch, loss_func, statistics_func=None,
                       enable_grad=True):
         with torch.set_grad_enabled(enable_grad):
             # run batch through the model
@@ -97,12 +100,12 @@ class Trainer:
             # calculate loss using the outputs of the model
             loss = loss_func(**outputs)
         # if error function is given, calculate error
-        if error_func is not None:
+        if statistics_func is not None:
             with torch.autograd.no_grad():
-                error = error_func(**outputs)
+                stats = statistics_func(**outputs)
         step_dict = {"loss":loss}
-        if error_func is not None:
-            step_dict["error"] = error
+        if statistics_func is not None:
+            step_dict.update(stats)
         return step_dict
 
     def calculate_grads(self, loss):
