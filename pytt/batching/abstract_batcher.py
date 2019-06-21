@@ -111,8 +111,8 @@ class AbstractInstance:
         """
         Moves Instance input tensors to the specified device
         """
-        for k,v in self.input.items():
-            self.input[k] = v.to(device=device)
+        for k,v in self.tensors.items():
+            self.tensors[k] = v.to(device=device)
         return self
 
 
@@ -176,8 +176,8 @@ class AbstractBatch:
         """
         Moves the batch to the specified device
         """
-        for k,v in self.inputs.items():
-            self.inputs[k] = v.to(device=device)
+        for k,v in self.tensors.items():
+            self.tensors[k] = v.to(device=device)
         return self
 
 
