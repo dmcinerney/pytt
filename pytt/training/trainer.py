@@ -12,6 +12,7 @@
 
 import os
 import torch
+import torch.distributed as dist
 from fairseq.legacy_distributed_data_parallel\
     import LegacyDistributedDataParallel as LDDP
 from pytt.utils import MultiBatchGradMod
@@ -139,4 +140,5 @@ class Trainer:
         if self.val_iterator is not None:
             self.val_iterator.indices_iterator.save(
                 os.path.join(folder, 'val_indices_iterator.pkl'))
+        # TODO: fix this so that history is appended rather than resaved
         self.history.save(os.path.join(folder, 'history.pkl'))

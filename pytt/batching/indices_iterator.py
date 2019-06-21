@@ -1,6 +1,7 @@
 from torch.utils.data import Sampler,\
                              SequentialSampler,\
                              RandomSampler
+from pytt.utils import write_pickle
 
 
 class AbstractIndicesIterator(Sampler):
