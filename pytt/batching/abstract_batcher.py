@@ -83,12 +83,6 @@ class AbstractBatchIterator:
         """
         raise NotImplementedError
 
-    def save_state_dict(self):
-        raise NotImplementedError
-
-    def load_state_dict(self, state_dict):
-        raise NotImplementedError
-
 
 class AbstractInstance:
     """
@@ -109,7 +103,7 @@ class AbstractInstance:
         IMPORTANT NOTE: this needs to create two object attributes:
             1) self.datapoint - a reference to the raw datapoint and any other
                 information that it is necessary to keep around
-            2) self.input - a processed dictionary of tensors
+            2) self.tensors - a processed dictionary of tensors
         """
         raise NotImplementedError
 
@@ -155,7 +149,8 @@ class AbstractBatch:
         IMPORTANT NOTE: this needs to create two object attributes:
             1) self.datapoints - a reference to the raw datapoints and any other
                 information that it is necessary to keep around
-            2) self.inputs - a processed dictionary of tensors
+            2) self.tensors - a processed dictionary of tensors which should
+                consist of both the unsupervised data and labels
         """
         raise NotImplementedError
 
@@ -164,6 +159,18 @@ class AbstractBatch:
         Returns the number of datapoints in the batch
         """
         return len(self.datapoints)
+
+    def get_unsupervised():
+        """
+        Return unsupervised data
+        """
+        raise NotImplementedError
+
+    def get_labels():
+        """
+        Return labels
+        """
+        raise NotImplementedError
 
     def to(self, device):
         """

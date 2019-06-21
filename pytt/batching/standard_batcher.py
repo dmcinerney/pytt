@@ -37,14 +37,16 @@ class StandardBatcher(AbstractBatcher):
                                          for raw_datapoint in raw_datapoints)
         return self.batch(processed_datapoint_generator, devices=devices)
 
-    def batch(self, instances, devices=None):
+    def batch(self, instances, devices=None, batch_class=None):
+        if batch_class is None:
+            batch_class = StandardBatch
         if devices is None:
-            return StandardBatch(list(instances))
+            return batch_class(list(instances))
         else:
             if isinstance(devices, str):
-                return StandardBatch(list(instances)).to(devices)
+                return batch_class(list(instances)).to(devices)
             else:
-                return StandardBatch.init_batches_across_devices(
+                return batch_class.init_batches_across_devices(
                     list(instances), devices)
 
     def out_batch_to_readable(self, output_batch):
@@ -296,8 +298,8 @@ class StandardInstance(AbstractInstance):
     """
     def __init__(self, raw_datapoint, device=None):
         self.datapoint = raw_datapoint
-        self.input = {k:torch.tensor(v).to(device=device)
-                      for k,v in raw_datapoint.items()}
+        self.tensors = {k:torch.tensor(v).to(device=device)
+                        for k,v in raw_datapoint.items()}
 
 
 class StandardBatch(AbstractBatch):
@@ -308,9 +310,17 @@ class StandardBatch(AbstractBatch):
     """
     def __init__(self, instances):
         self.datapoints = [instance.datapoint for instance in instances]
-        self.inputs = {k:pad_and_concat([instance.input[k]
-                                         for instance in instances])
-                       for k in instances[0].input.keys()}
+        self.tensors = {k:pad_and_concat([instance.tensors[k]
+                                          for instance in instances])
+                        for k in instances[0].tensors.keys()}
+
+    def get_unsupervised(self):
+        # NOTE: in most cases this should be overridden!
+        return self.tensors
+
+    def get_labels(self):
+        # NOTE: in most cases this should be overridden!
+        return self.tensors
 
 # TODO: figure out if something can be done for the output batch and output
 # instance objects

@@ -97,13 +97,13 @@ class Trainer:
                       enable_grad=True):
         with torch.set_grad_enabled(enable_grad):
             # run batch through the model
-            outputs = self.model(batch)
+            outputs = self.model(**batch.get_unsupervised())
             # calculate loss using the outputs of the model
-            loss = loss_func(**outputs)
+            loss = loss_func(**outputs, **batch.get_labels())
         # if error function is given, calculate error
         if statistics_func is not None:
             with torch.autograd.no_grad():
-                stats = statistics_func(**outputs)
+                stats = statistics_func(**outputs, **batch.get_labels())
         step_dict = {"loss":loss}
         if statistics_func is not None:
             step_dict.update(stats)
