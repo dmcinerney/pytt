@@ -60,7 +60,7 @@ class IterationInfo:
         if not (self.check_initialized()
                 and iteration_info.check_initialized()):
             raise Exception
-        new_iteration_info = IterationInfo()
+        new_iteration_info = self.__class__()
 
         # set iteration_info
         new_iteration_info.set_iterator_info(self.add_iterator_info(
@@ -122,15 +122,20 @@ class IterationInfo:
         logger.log(subbatch_info, verbosity=2)
 
     def log_fullbatch(self, base):
-        num_instances = self.iterator_info["samples_in_batch"]
         step_info = base\
-            +", train batch size: "+str(num_instances)
-        for k,v in self.train_info.items():
+            +", train batch size: "+str(self.iterator_info["samples_in_batch"])
+        step_info += self.process_batch_info(self.train_info)
+        if self.val_info is not None:
+            step_info += self.process_batch_info(self.val_info)
+        logger.log(step_info)
+
+    def process_batch_info(self, info):
+        step_info = ""
+        num_instances = self.iterator_info["samples_in_batch"]
+        for k,v in info.items():
             step_info += ", train %s per instance: " % k\
                 +str(v/num_instances)
-        if self.val_info is not None:
-            step_info += ", (implement printing val info)"
-        logger.log(step_info)
+        return step_info
 
     def to_tensor(self):
         list_of_floats = []
