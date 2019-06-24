@@ -30,6 +30,7 @@ class IterationInfo:
     def add_iterator_info(self, iterator_info1, iterator_info2):
         iterator_info = {}
         iterator_info["batches_seen"] = iterator_info2["batches_seen"]
+        iterator_info["iter_length"] = iterator_info2["iter_length"]
         iterator_info["samples_seen"] = iterator_info2["samples_seen"]
         iterator_info["take_step"] = iterator_info1["take_step"]\
                                   or iterator_info2["take_step"]
@@ -94,6 +95,7 @@ class IterationInfo:
     def log_iteration(self, full_batch=True):
         base = "batches_seen: "\
             +str(self.iterator_info["batches_seen"])\
+            +" of "+str(self.iterator_info["iter_length"])\
             +", samples_seen: "\
             +str(self.iterator_info["samples_seen"])
         if not full_batch:

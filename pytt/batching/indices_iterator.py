@@ -1,3 +1,4 @@
+import math
 from torch.utils.data import Sampler,\
                              SequentialSampler,\
                              RandomSampler
@@ -95,7 +96,8 @@ class SequentialIndicesIterator(AbstractIndicesIterator):
 
     def iterator_info(self):
         return {
-            "batches_seen":self.batches_seen, "samples_seen":self.samples_seen}
+            "batches_seen":self.batches_seen, "samples_seen":self.samples_seen,
+            "iter_length":len(self)}
 
     def set_batch_iter(self, batch_size):
         """
@@ -170,7 +172,8 @@ class RandomIndicesIterator(AbstractIndicesIterator):
     def iterator_info(self):
         return {"batches_seen":self.batches_seen,
                 "samples_seen":self.samples_seen,
-                "epochs_seen":self.epochs_seen}
+                "epochs_seen":self.epochs_seen,
+                "iter_length":len(self)}
 
     def set_batch_iter(self, batch_size):
         """
