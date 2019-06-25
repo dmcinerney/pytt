@@ -1,54 +1,6 @@
 import math
-from torch.utils.data import Sampler,\
-                             SequentialSampler,\
-                             RandomSampler
-from pytt.utils import write_pickle
-
-
-class AbstractIndicesIterator(Sampler):
-    """
-    Handles iterating of indices of the dataset
-
-    This is an abstract class that allows a very flexible framework for creating
-    indices iterators.  See standard_batchers.py for examples of standard
-    implementations of this abstract architecture.
-    """
-    @staticmethod
-    def load(filename):
-        """
-        Loads an IndicesIterator from file using pickle
-        """
-        return read_pickle(filename)
-
-    def __init__(self, source_length):
-        raise NotImplementedError
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        """
-        Returns the next batch indices
-        """
-        raise NotImplementedError
-
-    def __len__(self):
-        """
-        Returns the length of the iterator
-        """
-        raise NotImplementedError
-
-    def iterator_info(self):
-        """
-        Returns a dictionary describing what has been already iterated through
-        """
-        raise NotImplementedError
-
-    def save(self, filename):
-        """
-        Saves an IndicesIterator to file using pickle
-        """
-        write_pickle(self, filename)
+from torch.utils.data import SequentialSampler, RandomSampler
+from pytt.batching.abstract_batcher import AbstractIndicesIterator, IteratorInfo
 
 
 def init_indices_iterator(source_length, batch_size, random=None,
@@ -130,7 +82,7 @@ class RandomIndicesIterator(AbstractIndicesIterator):
     def __init__(self, source_length, batch_size, epochs=None, iterations=None):
         self.samples_seen = 0
         self.batches_seen = 0
-        self.epochs_seen = 0
+        self.epochs_seen = 0 if epochs is not None else None
         self.num_epochs = epochs
         self.num_iterations = iterations
         self.replacement = self.get_replacement(
@@ -170,10 +122,9 @@ class RandomIndicesIterator(AbstractIndicesIterator):
                 /min(self.batch_size, self.source_length))+self.batches_seen
 
     def iterator_info(self):
-        return {"batches_seen":self.batches_seen,
-                "samples_seen":self.samples_seen,
-                "epochs_seen":self.epochs_seen,
-                "iter_length":len(self)}
+        return StandardIteratorInfo(self.batches_seen, len(self),
+                                    self.samples_seen,
+                                    epochs_seen=self.epochs_seen)
 
     def set_batch_iter(self, batch_size):
         """
@@ -238,3 +189,19 @@ class BatchSampleIterator:
         if len(batch) == 0 or (self.drop_last and len(batch) < self.batch_size):
             raise StopIteration
         return batch
+
+
+class StandardIteratorInfo(IteratorInfo):
+    def __init__(self, batches_seen, total_batches, samples_seen,
+                 epochs_seen=None):
+        super(StandardIteratorInfo, self).__init__(batches_seen, samples_seen)
+        self.total_batches = total_batches
+        self.epochs_seen = epochs_seen
+
+    def __str__(self):
+        base = "batches_seen: "+str(self.batches_seen)\
+             + " of "+str(self.total_batches)\
+             + ", samples_seen: "+str(self.samples_seen)
+        if self.epochs_seen is not None:
+            base = "epochs_seen: "+str(self.epochs_seen)+", "+base
+        return base

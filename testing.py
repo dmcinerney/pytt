@@ -59,7 +59,7 @@ def spawn_function():
     raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
     tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
     batcher = TrainSummarizationBatcher(tokenizer)
-    batch_iterator = batcher.batch_iterator(raw_dataset, init_indices_iterator(len(raw_dataset), batch_size=15, random=True, iterations=200), subbatches=None, num_workers=5)
+    batch_iterator = batcher.batch_iterator(raw_dataset, init_indices_iterator(len(raw_dataset), batch_size=15, random=True, iterations=200), subbatches=5, num_workers=5)
     trainer = Trainer(model, optimizer, batch_iterator)
     logger.set_verbosity(2)
     trainer.train(loss_func, statistics_func=error_func)

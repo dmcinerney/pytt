@@ -1,6 +1,6 @@
 import pickle as pkl
 from torch.utils.data import Sampler
-from pytt.utils import split
+from pytt.utils import split, read_pickle, write_pickle
 
 class AbstractBatcher:
     """
@@ -47,11 +47,58 @@ class AbstractBatcher:
         """
         raise NotImplementedError
 
-    def batch_iterator(self, dataset, batch_size):
+    def batch_iterator(self, dataset, indices_iterator):
         """
-        Returns an iterator of batches from the dataset
+        Returns an iterator of batches from the dataset iterating according to
+        the input indices_iterator
         """
         raise NotImplementedError
+
+
+class AbstractIndicesIterator(Sampler):
+    """
+    Handles iterating of indices of the dataset
+
+    This is an abstract class that allows a very flexible framework for creating
+    indices iterators.  See standard_batchers.py for examples of standard
+    implementations of this abstract architecture.
+    """
+    @staticmethod
+    def load(filename):
+        """
+        Loads an IndicesIterator from file using pickle
+        """
+        return read_pickle(filename)
+
+    def __init__(self, source_length):
+        raise NotImplementedError
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        """
+        Returns the next batch indices
+        """
+        raise NotImplementedError
+
+    def __len__(self):
+        """
+        Returns the length of the iterator
+        """
+        raise NotImplementedError
+
+    def iterator_info(self):
+        """
+        Returns an IteratorInfo object
+        """
+        raise NotImplementedError
+
+    def save(self, filename):
+        """
+        Saves an IndicesIterator to file using pickle
+        """
+        write_pickle(self, filename)
 
 
 class AbstractBatchIterator:
@@ -62,7 +109,7 @@ class AbstractBatchIterator:
     batch iterators.  See standard_batchers.py for examples of standard
     implementations of this abstract architecture.
     """
-    def __init__(self, batcher, dataset, batch_size):
+    def __init__(self, batcher, dataset, indices_iterator):
         """
         Should initialize any iterators needed
         """
@@ -79,9 +126,22 @@ class AbstractBatchIterator:
 
     def iterator_info(self):
         """
-        Returns a dictionary describing what has been already iterated through
+        Returns an IteratorInfo object
         """
         raise NotImplementedError
+
+
+class IteratorInfo:
+    """
+    Contains any necessary info concerning the current state of the iterator
+    """
+    def __init__(self, batches_seen, samples_seen):
+        self.batches_seen = batches_seen 
+        self.samples_seen = samples_seen
+
+    def __str__(self):
+        return "batches_seen: "+str(self.batches_seen)\
+             + ", samples_seen: "+str(self.samples_seen)
 
 
 class AbstractInstance:
@@ -124,6 +184,7 @@ class AbstractBatch:
     batches.  See standard_batchers.py for examples of standard implementations
     of this abstract architecture.
     """
+    # TODO: determine if this function should be deleted
     @classmethod
     def init_batches_across_devices(cls, instances, devices):
         """
@@ -180,6 +241,8 @@ class AbstractBatch:
             self.tensors[k] = v.to(device=device)
         return self
 
+
+# TODO: determine if the following are necessary
 
 class AbstractOutputInstance:
     """

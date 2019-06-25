@@ -1,4 +1,3 @@
-import copy
 import torch
 import torch.distributed as dist
 from pytt.logger import logger
@@ -6,48 +5,29 @@ from pytt.logger import logger
 
 # TODO: add comments
 class IterationInfo:
-    def __init__(self):
+    def __init__(self, batch_info_class=None):
         self.iterator_info = None
         self.train_info = None
         self.val_info = None
         self.subbatch_info_list = None
+        self.batch_info_class = BatchInfo\
+                                if batch_info_class is None else\
+                                batch_info_class
 
     def set_iterator_info(self, iterator_info):
         self.iterator_info = iterator_info
 
-    def set_train_info(self, train_info):
-        self.train_info = train_info
+    def set_train_info(self, batch_info):
+        self.train_info = self.batch_info_class(batch_info)
 
     def check_initialized(self):
         return self.iterator_info is not None and self.train_info is not None
 
-    def set_val_info(self, val_info):
-        self.val_info = val_info
+    def set_val_info(self, batch_info):
+        self.val_info = self.batch_info_class(step_info)
 
     def set_subbatch_info_list(self, subbatch_info_list):
         self.subbatch_info_list = subbatch_info_list
-
-    def add_iterator_info(self, iterator_info1, iterator_info2):
-        iterator_info = {}
-        iterator_info["batches_seen"] = iterator_info2["batches_seen"]
-        iterator_info["iter_length"] = iterator_info2["iter_length"]
-        iterator_info["samples_seen"] = iterator_info2["samples_seen"]
-        iterator_info["take_step"] = iterator_info1["take_step"]\
-                                  or iterator_info2["take_step"]
-        if "samples_in_subbatch" in set(iterator_info1.keys()).union(
-                                        iterator_info2.keys()):
-            iterator_info["samples_in_subbatch"] = \
-                iterator_info1["samples_in_subbatch"]\
-                + iterator_info2["samples_in_subbatch"]
-        if "rank" in set(iterator_info1.keys()).union(
-                         iterator_info2.keys()):
-            if iterator_info1["rank"] == iterator_info2["rank"]:
-                iterator_info["rank"] = iterator_info1["rank"]
-            iterator_info["worldsize"] = iterator_info1["worldsize"]
-            iterator_info["samples_per_process"] = \
-                iterator_info2["samples_per_process"]
-        iterator_info["samples_in_batch"] = iterator_info1["samples_in_batch"]
-        return iterator_info
 
     def add_process_batch_info(self, process_batch_info1, process_batch_info2):
         process_batch_info = {}
@@ -61,20 +41,21 @@ class IterationInfo:
         if not (self.check_initialized()
                 and iteration_info.check_initialized()):
             raise Exception
-        new_iteration_info = self.__class__()
+        new_iteration_info = self.__class__(
+            batch_info_class=self.batch_info_class)
 
         # set iteration_info
-        new_iteration_info.set_iterator_info(self.add_iterator_info(
-            self.iterator_info, iteration_info.iterator_info))
+        new_iteration_info.set_iterator_info(
+            self.iterator_info+iteration_info.iterator_info)
 
         # set train_info
-        new_iteration_info.set_train_info(self.add_process_batch_info(
-            self.train_info, iteration_info.train_info))
+        new_iteration_info.train_info = self.train_info\
+                                        +iteration_info.train_info
 
         # set val_info
         if self.val_info is not None and iteration_info.val_info is not None:
-            new_iteration_info.set_val_info(self.add_process_batch_info(
-                self.val_info, iteration_info.val_info))
+            new_iteration_info.val_info = self.val_info\
+                                          +iteration_info.val_info
 
         # set subbatch_info_list
         subbatch_info_list = []
@@ -93,93 +74,85 @@ class IterationInfo:
         return self
 
     def log_iteration(self, full_batch=True):
-        base = "batches_seen: "\
-            +str(self.iterator_info["batches_seen"])\
-            +" of "+str(self.iterator_info["iter_length"])\
-            +", samples_seen: "\
-            +str(self.iterator_info["samples_seen"])
         if not full_batch:
-            self.log_subbatch(base)
+            self.log_subbatch()
         else:
-            self.log_fullbatch(base)
+            self.log_fullbatch()
 
-    def log_subbatch(self, base):
-        is_multibatchperprocess = \
-            "samples_in_subbatch" in self.iterator_info.keys()
-        is_multiprocess = dist.is_initialized()
-        if not is_multibatchperprocess and not is_multiprocess:
-            return
-        subbatch_info = "\t"+base
-        if is_multibatchperprocess:
-            subbatch_info += ", subbatches_seen: "\
-                +str(len(self.subbatch_info_list)
-                     if self.subbatch_info_list is not None else 1)
-        subbatch_info += ", samples_in_batch_seen: "\
-            + (str(self.iterator_info["samples_in_subbatch"])
-               if is_multibatchperprocess else
-               str(self.iterator_info["samples_per_process"]))
-        if is_multiprocess:
-            subbatch_info += ", rank: "\
-                +str(self.iterator_info["rank"])
-        logger.log(subbatch_info, verbosity=2)
+    def log_subbatch(self):
+        logger.log(self.iterator_info.subbatch_str(), verbosity=2)
 
-    def log_fullbatch(self, base):
-        step_info = base\
-            +", train batch size: "+str(self.iterator_info["samples_in_batch"])
-        step_info += self.process_batch_info(self.train_info)
+    def log_fullbatch(self):
+        step_info = str(self.iterator_info)
+        step_info += "\n  TRAIN\n"+str(self.train_info)
         if self.val_info is not None:
-            step_info += self.process_batch_info(self.val_info)
+            step_info += "\n  VAL\n"+str(self.val_info)
         logger.log(step_info)
 
-    def process_batch_info(self, info):
-        step_info = ""
-        num_instances = self.iterator_info["samples_in_batch"]
-        for k,v in info.items():
-            step_info += ", train %s per instance: " % k\
-                +str(v/num_instances)
-        return step_info
-
     def to_tensor(self):
-        list_of_floats = []
-        list_of_floats += [
-            v for k,v in sorted(self.iterator_info.items(),
-                                key=lambda kv: kv[0])
-        ]
-        list_of_floats += [
-            v for k,v in sorted(self.train_info.items(),
-                                key=lambda kv: kv[0])
-        ]
+        tensors = []
+        tensors.append(self.iterator_info.to_tensor().float())
+        tensors.append(self.train_info.to_tensor())
         if self.val_info is not None:
-            list_of_floats += [
-                v for k,v in sorted(self.val_info.items(),
-                                    key=lambda kv: kv[0])
-            ]
+            tensors.append(self.val_info.to_tensor())
         if self.subbatch_info_list is not None:
             for subbatch_iteration_info in self.subbatch_info_list:
-                list_of_floats += [
-                    i for i in subbatch_iteration_info.to_tensor()]
-        return torch.tensor(list_of_floats)
+                tensors.append(subbatch_iteration_info.to_tensor())
+        return torch.cat(tensors, 0)
 
     def from_tensor(self, tensor, isiter=False):
-        iteration_info = copy.deepcopy(self)
         if not isiter:
             tensor_iter = iter(tensor)
         else:
             tensor_iter = tensor
-        for k,v in sorted(iteration_info.iterator_info.items(),
+        self.iterator_info.from_tensor(tensor_iter, isiter=True)
+        self.train_info.from_tensor(tensor_iter, isiter=True)
+        if self.val_info is not None:
+            self.train_info.from_tensor(tensor_iter, isiter=True)
+        if self.subbatch_info_list is not None:
+            for subbatch_iteration_info in self.subbatch_info_list:
+                subbatch_iteration_info.from_tensor(tensor_iter, isiter=True)
+        return self
+
+
+class BatchInfo:
+    def __init__(self, batch_info_dict):
+        self.batch_info_dict = batch_info_dict
+
+    def __add__(self, batch_info):
+        new_batch_info_dict = {}
+        for k in set(self.batch_info_dict.keys()).union(
+                     batch_info.batch_info_dict.keys()):
+            new_batch_info_dict[k] = self.batch_info_dict[k]\
+                                     + batch_info.batch_info_dict[k]
+        return self.__class__(new_batch_info_dict)
+
+    def __str__(self):
+        step_info = "    "
+        first = True
+        for (k,v) in sorted(self.batch_info_dict.items(), key=lambda kv: kv[0]):
+            if k.startswith('_'):
+                continue
+            if not first:
+                step_info += ", "
+            first = False
+            step_info += ("%s per instance: " % k)\
+                         +str(v/self.batch_info_dict['_batch_length'])
+        return step_info
+
+    def to_tensor(self):
+        list_of_floats = []
+        for k,v in sorted(self.batch_info_dict.items(),
                           key=lambda kv: kv[0]):
-            iteration_info.iterator_info[k] = int(next(tensor_iter).item())
-        for k,v in sorted(iteration_info.train_info.items(),
+            list_of_floats.append(v)
+        return torch.tensor(list_of_floats)
+
+    def from_tensor(self, tensor, isiter=False):
+        if not isiter:
+            tensor_iter = iter(tensor)
+        else:
+            tensor_iter = tensor
+        for k,v in sorted(self.batch_info_dict.items(),
                           key=lambda kv: kv[0]):
-            iteration_info.train_info[k] = float(next(tensor_iter).item())
-        if iteration_info.val_info is not None:
-            for k,v in sorted(iteration_info.val_info.items(),
-                              key=lambda kv: kv[0]):
-                iteration_info.val_info[k] = float(next(tensor_iter).item())
-        if iteration_info.subbatch_info_list is not None:
-            new_subbatch_info_list = []
-            for subbatch_iteration_info in iteration_info.subbatch_info_list:
-                subbatch_iteration_info = subbatch_iteration_info.from_tensor(
-                    tensor_iter, isiter=True)
-            iteration_info.set_subbatch_info_list(new_subbatch_info_list)
-        return iteration_info
+            self.batch_info_dict[k] = float(next(tensor_iter).item())
+        return self

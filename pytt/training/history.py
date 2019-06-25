@@ -1,3 +1,4 @@
+import copy
 import torch.distributed as dist
 from pytt.utils import read_pickle, write_pickle
 from pytt.distributed import collect_tensors_on_rank0
@@ -12,14 +13,14 @@ class History:
 
     def register_iteration(self, iteration_info):
         if len(self._history) == 0\
-           or self._history[-1].iterator_info["take_step"]:
+           or self._history[-1].iterator_info.take_step:
             self._history.append(iteration_info)
         else:
             self._history[-1] = self._history[-1] + iteration_info
 
         self._history[-1].log_iteration(full_batch=False)
 
-        if self._history[-1].iterator_info["take_step"]:
+        if self._history[-1].iterator_info.take_step:
             if dist.is_initialized():
                 collected = self.collect_info_on_rank0(self._history[-1])
                 if collected is not None:
@@ -34,13 +35,13 @@ class History:
         tensors = collect_tensors_on_rank0(iteration_info.to_tensor())
         if tensors is None:
             return None
-        collected = [iteration_info.from_tensor(tensor) for tensor in tensors]
+        collected = [copy.deepcopy(iteration_info).from_tensor(tensor) for tensor in tensors]
         return collected
 
     @property
     def history(self):
         if len(self._history) == 0\
-           or self._history[-1].iterator_info["take_step"]:
+           or self._history[-1].iterator_info.take_step:
             return self._history
         else:
             return self._history[:-1]

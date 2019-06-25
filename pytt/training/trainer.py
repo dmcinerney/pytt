@@ -81,7 +81,7 @@ class Trainer:
         # calculate gradients
         self.calculate_grads(train_info["loss"])
         # take step if the iterator says to
-        self.step(grad_mod=grad_mod)
+        self.step(grad_mod=grad_mod, denominator=train_info["_batch_length"])
 
     def iteration_valstep(self, iteration_info, loss_func,
                           statistics_func=None):
@@ -104,7 +104,7 @@ class Trainer:
         if statistics_func is not None:
             with torch.autograd.no_grad():
                 stats = statistics_func(**outputs, **batch.get_labels())
-        step_dict = {"loss":loss}
+        step_dict = {"loss":loss, "_batch_length":torch.tensor(len(batch))}
         if statistics_func is not None:
             step_dict.update(stats)
         return step_dict
@@ -117,10 +117,9 @@ class Trainer:
                 self.model.accumulate_grads = True
         loss.backward()
 
-    def step(self, grad_mod=None):
+    def step(self, grad_mod=None, denominator=1):
         if self.batch_iterator.take_step():
-            multi_batch_grad_mod = MultiBatchGradMod(
-                self.batch_iterator.iterator_info()["samples_in_batch"])
+            multi_batch_grad_mod = MultiBatchGradMod(denominator)
             if grad_mod is not None:
                 grad_mod(list(self.model.parameters()))
             self.optimizer.step()
