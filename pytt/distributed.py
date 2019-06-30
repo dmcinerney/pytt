@@ -1,4 +1,5 @@
 import os
+import copy
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -82,3 +83,10 @@ def collect_tensors_on_rank0(tensor):
             dist.recv(new_tensor, i)
             tensors.append(new_tensor)
         return tensors
+
+def collect_obj_on_rank0(obj):
+    tensors = collect_tensors_on_rank0(obj.to_tensor())
+    if tensors is None:
+        return None
+    collected = [copy.deepcopy(obj).from_tensor(tensor) for tensor in tensors]
+    return collected

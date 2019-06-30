@@ -127,6 +127,11 @@ class BatchInfo:
                                      + batch_info.batch_info_dict[k]
         return self.__class__(new_batch_info_dict)
 
+    def __radd__(self, i):
+        if i != 0:
+            raise Exception
+        return self
+
     def __str__(self):
         step_info = "    "
         first = True

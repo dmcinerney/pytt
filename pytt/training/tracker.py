@@ -1,9 +1,8 @@
-import copy
 import torch.distributed as dist
 from pytt.utils import read_pickle, write_pickle
-from pytt.distributed import collect_tensors_on_rank0
+from pytt.distributed import collect_obj_on_rank0
 
-class History:
+class Tracker:
     @classmethod
     def load(cls, filename):
         return cls(read_pickle(filename))
@@ -22,7 +21,7 @@ class History:
 
         if self._history[-1].iterator_info.take_step:
             if dist.is_initialized():
-                collected = self.collect_info_on_rank0(self._history[-1])
+                collected = collect_obj_on_rank0(self._history[-1])
                 if collected is not None:
                     self._history[-1] = sum(collected)
                     self._history[-1].log_iteration()
@@ -30,13 +29,6 @@ class History:
                     self._history = []
             else:
                 self._history[-1].log_iteration()
-
-    def collect_info_on_rank0(self, iteration_info):
-        tensors = collect_tensors_on_rank0(iteration_info.to_tensor())
-        if tensors is None:
-            return None
-        collected = [copy.deepcopy(iteration_info).from_tensor(tensor) for tensor in tensors]
-        return collected
 
     @property
     def history(self):

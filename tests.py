@@ -31,12 +31,13 @@ from torch.optim import Adam
 from pytt.training.trainer import Trainer
 from pytt.logger import logger
 from pytt.training.training_controller import AbstractTrainingController
+from pytt.testing.tester import Tester
 
 class Model(nn.Module):
     def __init__(self):
         super(Model, self).__init__()
         self.p = nn.Linear(1,1)
-    
+
     def forward(self, text, **kwargs):
         text = text.to(next(iter(self.p.parameters())).device)
 #         print("forward")
@@ -47,7 +48,7 @@ def loss_func(output):
     return output.sum()
 
 def error_func(*args, **kwargs):
-    return {'error': torch.tensor(2)}
+    return {'error': torch.tensor(2*next(iter(kwargs.values())).shape[0])}
 
 def spawn_function():
     model = Model()
@@ -55,21 +56,23 @@ def spawn_function():
         rank = torch.distributed.get_rank()
         worldsize = torch.distributed.get_world_size()
         model = LDDP(model.to(rank), worldsize)
-    optimizer = Adam([p for p in model.parameters()])
-    raw_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/val_processed.data')
-    tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_dataset/vocab', 50000))
+    tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/vocab', 50000))
     batcher = TrainSummarizationBatcher(tokenizer)
-    batch_iterator = batcher.batch_iterator(raw_dataset, init_indices_iterator(len(raw_dataset), batch_size=15, random=True, iterations=200), subbatches=5, num_workers=5)
-    trainer = Trainer(model, optimizer, batch_iterator)
-    logger.set_verbosity(2)
-    trainer.train(loss_func, statistics_func=error_func)
-
+    #train_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/val_processed.data')
+    #batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=None, num_workers=5)
+    #optimizer = Adam([p for p in model.parameters()])
+    #trainer = Trainer(model, optimizer, batch_iterator)
+    #logger.set_verbosity(2)
+    #trainer.train(loss_func, statistics_func=error_func)
+    val_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/val_processed.data')
+    batch_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=3, num_workers=5)
+    tester = Tester(model, batch_iterator)
+    tester.test(loss_func, statistics_func=error_func)
 
 if __name__ == '__main__':
     seed_state()
-#     torch.multiprocessing.set_start_method("spawn")
-    nprocs = 2
-    distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
-    distributed_spawn_function()
+    #nprocs = 2
+    #distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
+    #distributed_spawn_function()
     # setup(0,1)
-    # spawn_function()
+    spawn_function()

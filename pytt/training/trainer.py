@@ -17,8 +17,8 @@ from fairseq.legacy_distributed_data_parallel\
     import LegacyDistributedDataParallel as LDDP
 from pytt.utils import MultiBatchGradMod
 from pytt.logger import logger
-from pytt.training.iteration_info import IterationInfo
-from pytt.training.history import History
+from pytt.iteration_info import IterationInfo
+from pytt.training.tracker import Tracker
 
 
 # TODO: fix and add comments
@@ -28,14 +28,14 @@ class Trainer:
     val_iterator with saving and loading capabilities
     """
     def __init__(self, model, optimizer, batch_iterator, val_iterator=None,
-                 val_every=1, history=History(), checkpoint_folder=None,
+                 val_every=1, tracker=Tracker(), checkpoint_folder=None,
                  checkpoint_every=1):
         self.model = model
         self.optimizer = optimizer
         self.batch_iterator = batch_iterator
         self.val_iterator = val_iterator
         self.val_every = val_every
-        self.history = history
+        self.tracker = tracker
         self.checkpoint_folder = checkpoint_folder
         self.checkpoint_every = checkpoint_every
 
@@ -57,8 +57,8 @@ class Trainer:
                 % self.val_every) == 0:
             self.iteration_valstep(iteration_info, loss_func,
                                    statistics_func=statistics_func)
-        if self.history is not None:
-            self.history.register_iteration(iteration_info)
+        if self.tracker is not None:
+            self.tracker.register_iteration(iteration_info)
         if self.checkpoint_folder is not None\
            and iteration_info.iterator_info["take_step"]\
            and (iteration_info.iterator_info["batches_seen"]
@@ -100,7 +100,7 @@ class Trainer:
             outputs = self.model(**batch.get_unsupervised())
             # calculate loss using the outputs of the model
             loss = loss_func(**outputs, **batch.get_labels())
-        # if error function is given, calculate error
+        # if statistics function is given, calculate it
         if statistics_func is not None:
             with torch.autograd.no_grad():
                 stats = statistics_func(**outputs, **batch.get_labels())
@@ -140,4 +140,4 @@ class Trainer:
             self.val_iterator.indices_iterator.save(
                 os.path.join(folder, 'val_indices_iterator.pkl'))
         # TODO: fix this so that history is appended rather than resaved
-        self.history.save(os.path.join(folder, 'history.pkl'))
+        self.tracker.save(os.path.join(folder, 'tracker.pkl'))
