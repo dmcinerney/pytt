@@ -48,15 +48,15 @@ class Trainer:
 
     def iteration(self, iteration_info, batch, loss_func, statistics_func=None,
                   grad_mod=None):
-        self.iteration_trainstep(iteration_info, batch, loss_func,
-                                 statistics_func=statistics_func,
-                                 grad_mod=grad_mod)
         if self.val_iterator is not None\
            and iteration_info.iterator_info["take_step"]\
            and (iteration_info.iterator_info["batches_seen"]
                 % self.val_every) == 0:
             self.iteration_valstep(iteration_info, loss_func,
                                    statistics_func=statistics_func)
+        self.iteration_trainstep(iteration_info, batch, loss_func,
+                                 statistics_func=statistics_func,
+                                 grad_mod=grad_mod)
         if self.tracker is not None:
             self.tracker.register_iteration(iteration_info)
         if self.checkpoint_folder is not None\
