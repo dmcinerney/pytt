@@ -1,9 +1,9 @@
 import torch
-from torch.nn import functional as F
 from pytt.batching.abstract_batcher import AbstractBatcher,\
                                            AbstractInstance,\
                                            AbstractBatch
 from pytt.batching.standard_batch_iterator import StandardBatchIterator
+from pytt.utils import pad_and_concat
 
 
 class StandardBatcher(AbstractBatcher):
@@ -95,50 +95,3 @@ class StandardBatch(AbstractBatch):
 
 # TODO: figure out if something can be done for the output batch and output
 # instance objects
-
-
-# helper functions used to create a StandardBatch object
-
-def get_max_dims(tensors):
-    """
-    Returns None if the tensors are all the same size and the maximum size in
-    each dimension otherwise
-    """
-    dim = tensors[0].dim()
-    max_size = [0]*dim
-    different = False
-    for tensor in tensors:
-        if tensor.dim() != dim:
-            raise Exception
-        for i in range(dim):
-            if not different:
-                different = max_size[i] != tensor.size(i)
-            max_size[i] = max(max_size[i], tensor.size(i))
-    if different:
-        return max_size
-    else:
-        return None
-
-def pad_and_concat(tensors, max_size=None, auto=True):
-    """
-    Returns concatenated tensors with the added batch dimension being first
-    """
-    dim = tensors[0].dim()
-    if auto:
-        if max_size is not None:
-            raise Exception
-        max_size = get_max_dims(tensors)
-    concatenated_tensor = []
-    for tensor in tensors:
-        if tensor.dim() != dim:
-            raise Exception
-        if max_size is not None:
-            padding = []
-            for i in range(dim-1,-1,-1):
-                padding.extend([0,max_size[i]-tensor.size(i)])
-            new_tensor = F.pad(tensor, tuple(padding))
-        else:
-            new_tensor = tensor
-        concatenated_tensor.append(new_tensor.view(1,*new_tensor.size()))
-    concatenated_tensor = torch.cat(concatenated_tensor, 0)
-    return concatenated_tensor

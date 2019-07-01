@@ -13,6 +13,7 @@
 import os
 import torch
 import torch.distributed as dist
+#from torch.nn import DistributedDataParallel as DDP
 from fairseq.legacy_distributed_data_parallel\
     import LegacyDistributedDataParallel as LDDP
 from pytt.utils import MultiBatchGradMod
@@ -31,6 +32,8 @@ class Trainer:
                  val_every=1, tracker=Tracker(), checkpoint_folder=None,
                  checkpoint_every=1):
         self.model = model
+        if dist.is_initialized() and not isinstance(self.model, LDDP):
+            raise Exception
         self.optimizer = optimizer
         self.batch_iterator = batch_iterator
         self.val_iterator = val_iterator

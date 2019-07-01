@@ -1,6 +1,7 @@
 import torch
 import torch.distributed as dist
 from pytt.logger import logger
+from pytt.utils import indent
 
 
 # TODO: add comments
@@ -84,9 +85,9 @@ class IterationInfo:
 
     def log_fullbatch(self):
         step_info = str(self.iterator_info)
-        step_info += "\n  TRAIN\n"+str(self.train_info)
+        step_info += "\n  TRAIN\n"+indent(str(self.train_info), "    ")
         if self.val_info is not None:
-            step_info += "\n  VAL\n"+str(self.val_info)
+            step_info += "\n  VAL\n"+indent(str(self.val_info), "    ")
         logger.log(step_info)
 
     def to_tensor(self):
@@ -133,7 +134,10 @@ class BatchInfo:
         return self
 
     def __str__(self):
-        step_info = "    "
+        return self.to_string()
+
+    def to_string(self, indent=""):
+        step_info = indent
         first = True
         for (k,v) in sorted(self.batch_info_dict.items(), key=lambda kv: kv[0]):
             if k.startswith('_'):
