@@ -134,10 +134,7 @@ class BatchInfo:
         return self
 
     def __str__(self):
-        return self.to_string()
-
-    def to_string(self, indent=""):
-        step_info = indent
+        step_info = ""
         first = True
         for (k,v) in sorted(self.batch_info_dict.items(), key=lambda kv: kv[0]):
             if k.startswith('_'):
