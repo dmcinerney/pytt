@@ -221,15 +221,15 @@ class AbstractBatch:
         """
         return len(self.datapoints)
 
-    def get_unsupervised():
+    def get_observed():
         """
-        Return unsupervised data
+        Return the tensors needed for the forward pass of the model
         """
         raise NotImplementedError
 
-    def get_labels():
+    def get_target():
         """
-        Return labels
+        Return the tensors needed for the loss and statistics computations
         """
         raise NotImplementedError
 

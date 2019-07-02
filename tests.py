@@ -19,7 +19,7 @@
 #     print(batch_iterator2.iterator_info(), batch_iterator2.indices_iterator.replacement, len(batch_iterator2.indices_iterator), len(raw_dataset))
 import torch
 from summarization.summarization_dataset import SummarizationDataset, load_vocab
-from summarization.summarization_batcher import TrainSummarizationBatcher
+from summarization.summarization_batcher import TrainSummarizationBatcher, TestSummarizationBatcher
 from pytt.batching.indices_iterator import init_indices_iterator
 from pytt.nlp.tokenizer import Tokenizer
 from torch import nn
@@ -58,6 +58,7 @@ def spawn_function():
         model = LDDP(model.to(rank), worldsize)
     tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/vocab', 50000))
     batcher = TrainSummarizationBatcher(tokenizer)
+    val_batcher = TestSummarizationBatcher(tokenizer)
     val_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/val_processed.data')
     train_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/val_processed.data')
     batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=None, num_workers=5)

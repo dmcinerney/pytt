@@ -21,12 +21,12 @@ class Tester:
     def process_batch(self, batch, loss_func, statistics_func=None):
         with torch.autograd.no_grad():
             # run batch through the model
-            outputs = self.model(**batch.get_unsupervised())
+            outputs = self.model(**batch.get_observed())
             # calculate loss using the outputs of the model
-            loss = loss_func(**outputs, **batch.get_labels())
+            loss = loss_func(**outputs, **batch.get_target())
             # if statistics function is given, calculate it
             if statistics_func is not None:
-                stats = statistics_func(**outputs, **batch.get_labels())
+                stats = statistics_func(**outputs, **batch.get_target())
         step_dict = {"loss":loss, "_batch_length":torch.tensor(len(batch))}
         if statistics_func is not None:
             step_dict.update(stats)

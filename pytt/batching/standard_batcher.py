@@ -62,7 +62,7 @@ class StandardBatcher(AbstractBatcher):
 
 class StandardInstance(AbstractInstance):
     """
-    Implementation of an AbstractInstance that does no processing
+    Implementation of an AbstractInstance that does no processing 
 
     All functions without comments are described in the superclass.
     """
@@ -70,6 +70,8 @@ class StandardInstance(AbstractInstance):
         self.datapoint = raw_datapoint
         self.tensors = {k:torch.tensor(v).to(device=device)
                         for k,v in raw_datapoint.items()}
+        self.observed_keys = self.tensors.keys()
+        self.target_keys = self.tensors.keys()
 
 
 class StandardBatch(AbstractBatch):
@@ -83,14 +85,14 @@ class StandardBatch(AbstractBatch):
         self.tensors = {k:pad_and_concat([instance.tensors[k]
                                           for instance in instances])
                         for k in instances[0].tensors.keys()}
+        self.observed_keys = instances[0].observed_keys
+        self.target_keys = instances[0].target_keys
 
-    def get_unsupervised(self):
-        # NOTE: in most cases this should be overridden!
-        return self.tensors
+    def get_observed(self):
+        return {k:self.tensors[k] for k in self.observed_keys}
 
-    def get_labels(self):
-        # NOTE: in most cases this should be overridden!
-        return self.tensors
+    def get_target(self):
+        return {k:self.tensors[k] for k in self.target_keys}
 
 
 # TODO: figure out if something can be done for the output batch and output

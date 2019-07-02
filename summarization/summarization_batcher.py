@@ -6,26 +6,19 @@ class SummarizationBatcher(StandardBatcher):
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
 
-    def process_datapoint(self, raw_datapoint):
-        return SummarizationInstance(raw_datapoint, self.tokenizer)
-
     def out_batch_to_readable(self, output_batch):
         # TODO: implement this
         raise NotImplementedError
 
 class TrainSummarizationBatcher(SummarizationBatcher):
-    def batch(self, instances, devices=None):
-        return super(TrainSummarizationBatcher, self).batch(
-            instances, devices=devices, batch_class=TrainSummarizationBatch)
+    def process_datapoint(self, raw_datapoint):
+        return TrainSummarizationInstance(raw_datapoint, self.tokenizer)
 
 class TestSummarizationBatcher(SummarizationBatcher):
-    def batch(self, instances, devices=None):
-        return super(TrainSummarizationBatcher, self).batch(
-            instances, devices=devices, batch_class=TestSummarizationBatch)
+    def process_datapoint(self, raw_datapoint):
+        return TestSummarizationInstance(raw_datapoint, self.tokenizer)
 
-class SummarizationInstance(AbstractInstance):
-    unsupervised = []
-    supervised = []
+class AbstractSummarizationInstance(AbstractInstance):
     def __init__(self, raw_datapoint, tokenizer):
         text, oov_token2id = tokenizer.tokens2tensor(raw_datapoint['text'])
         summary, _ = tokenizer.tokens2tensor(raw_datapoint['summary'],
@@ -39,17 +32,15 @@ class SummarizationInstance(AbstractInstance):
             'summary_length':torch.tensor(len(summary)),
         }
 
-class TrainSummarizationBatch(StandardBatch):
-    def get_unsupervised(self):
-        return {k:self.tensors[k] for k in ['text', 'text_length', 'summary',
-                                            'summary_length']}
+class TrainSummarizationInstance(AbstractSummarizationInstance):
+    def __init__(self, raw_datapoint, tokenizer):
+        super(TrainSummarizationInstance, self).__init__(raw_datapoint, tokenizer)
+        self.observed_keys = ['text', 'text_length', 'summary',
+                              'summary_length']
+        self.target_keys = []
 
-    def get_labels(self):
-        return {}
-
-class TestSummarizationBatch(StandardBatch):
-    def get_unsupervised(self):
-        return {k:self.tensors[k] for k in ['text', 'text_length']}
-
-    def get_labels(self):
-        return {k:self.tensors[k] for k in ['summary', 'summary_length']}
+class TestSummarizationInstance(AbstractSummarizationInstance):
+    def __init__(self, raw_datapoint, tokenizer):
+        super(TestSummarizationInstance, self).__init__(raw_datapoint, tokenizer)
+        self.observed_keys = ['text', 'text_length']
+        self.target_keys = ['summary', 'summary_length']
