@@ -51,28 +51,31 @@ class Trainer:
 
     def iteration(self, iteration_info, batch, loss_func, statistics_func=None,
                   grad_mod=None):
+        # record iterator info
+        iteration_info.set_iterator_info(self.batch_iterator.iterator_info())
+        # take val step
         if self.val_iterator is not None\
-           and iteration_info.iterator_info["take_step"]\
-           and (iteration_info.iterator_info["batches_seen"]
+           and iteration_info.iterator_info.take_step\
+           and (iteration_info.iterator_info.batches_seen
                 % self.val_every) == 0:
             self.iteration_valstep(iteration_info, loss_func,
                                    statistics_func=statistics_func)
+        # take train step
         self.iteration_trainstep(iteration_info, batch, loss_func,
                                  statistics_func=statistics_func,
                                  grad_mod=grad_mod)
+        # register iteration
         if self.tracker is not None:
             self.tracker.register_iteration(iteration_info)
+        # save state to file
         if self.checkpoint_folder is not None\
-           and iteration_info.iterator_info["take_step"]\
-           and (iteration_info.iterator_info["batches_seen"]
+           and iteration_info.iterator_info.take_step\
+           and (iteration_info.iterator_info.batches_seen
                 % self.checkpoint_every) == 0:
             self.save_state(self.checkpoint_folder)
 
     def iteration_trainstep(self, iteration_info, batch, loss_func,
                             statistics_func=None, grad_mod=None):
-        # record iterator info
-        iteration_info.set_iterator_info(self.batch_iterator.iterator_info())
-
         # process training batch
         train_info = self.process_batch(batch, loss_func,
                                         statistics_func=statistics_func,

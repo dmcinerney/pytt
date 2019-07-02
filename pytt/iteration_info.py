@@ -25,7 +25,7 @@ class IterationInfo:
         return self.iterator_info is not None and self.train_info is not None
 
     def set_val_info(self, batch_info):
-        self.val_info = self.batch_info_class(step_info)
+        self.val_info = self.batch_info_class(batch_info)
 
     def set_subbatch_info_list(self, subbatch_info_list):
         self.subbatch_info_list = subbatch_info_list

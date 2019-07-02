@@ -82,11 +82,10 @@ class RandomIndicesIterator(AbstractIndicesIterator):
     def __init__(self, source_length, batch_size, epochs=None, iterations=None):
         self.samples_seen = 0
         self.batches_seen = 0
-        self.epochs_seen = 0 if epochs is not None else None
+        self.epochs_seen = None if epochs is None or epochs == False else 0
         self.num_epochs = epochs
         self.num_iterations = iterations
-        self.replacement = self.get_replacement(
-            epochs, iterations)
+        self.replacement = self.get_replacement(epochs, iterations)
         self.source_length = source_length
         self.sampler = RandomSampler(range(source_length),
                                      replacement=self.replacement)
@@ -97,7 +96,8 @@ class RandomIndicesIterator(AbstractIndicesIterator):
         try:
             indices = next(self.batch_iter)
         except StopIteration:
-            self.epochs_seen += 1
+            if self.epochs_seen is not None:
+                self.epochs_seen += 1
             if isinstance(self.num_epochs, int)\
                and self.epochs_seen >= self.num_epochs:
                 raise StopIteration
