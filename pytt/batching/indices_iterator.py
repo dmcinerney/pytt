@@ -44,7 +44,7 @@ class SequentialIndicesIterator(AbstractIndicesIterator):
         return indices
 
     def __len__(self):
-        return self.source_length
+        return math.ceil(self.source_length/self.batch_size)
 
     def iterator_info(self):
         return StandardIteratorInfo(self.batches_seen, len(self),
@@ -95,8 +95,6 @@ class RandomIndicesIterator(AbstractIndicesIterator):
         try:
             indices = next(self.batch_iter)
         except StopIteration:
-            if self.epochs_seen is not None:
-                self.epochs_seen += 1
             if isinstance(self.num_epochs, int)\
                and not isinstance(self.num_epochs, bool)\
                and self.epochs_seen >= self.num_epochs:
@@ -109,6 +107,9 @@ class RandomIndicesIterator(AbstractIndicesIterator):
             raise StopIteration
         self.samples_seen += len(indices)
         self.batches_seen += 1
+        if self.epochs_seen is not None\
+           and (self.samples_seen % self.source_length) == 0:
+            self.epochs_seen += 1
         return indices
 
     def __len__(self):
@@ -117,9 +118,16 @@ class RandomIndicesIterator(AbstractIndicesIterator):
            and isinstance(self.num_iterations, int)):
             return self.num_iterations
         elif isinstance(self.num_epochs, int) and self.num_iterations is None:
-            return math.ceil(
-                (self.num_epochs*self.source_length - self.samples_seen)\
-                /min(self.batch_size, self.source_length))+self.batches_seen
+            batches_to_go_in_current_epoch = math.ceil(
+                (self.source_length - (self.samples_seen % self.source_length))
+                /self.batch_size
+            )
+            batches_to_go_in_future_epochs = \
+                (self.num_epochs-self.epochs_seen-1)\
+                *math.ceil(self.source_length/self.batch_size)
+            return self.batches_seen\
+                   +batches_to_go_in_current_epoch\
+                   +batches_to_go_in_future_epochs
 
     def iterator_info(self):
         return StandardIteratorInfo(self.batches_seen, len(self),
