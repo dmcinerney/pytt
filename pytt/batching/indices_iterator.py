@@ -99,6 +99,7 @@ class RandomIndicesIterator(AbstractIndicesIterator):
             if self.epochs_seen is not None:
                 self.epochs_seen += 1
             if isinstance(self.num_epochs, int)\
+               and not isinstance(self.num_epochs, bool)\
                and self.epochs_seen >= self.num_epochs:
                 raise StopIteration
             self.sample_iter = iter(self.sampler)
