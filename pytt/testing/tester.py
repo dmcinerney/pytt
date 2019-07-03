@@ -3,6 +3,7 @@ import torch.distributed as dist
 from pytt.logger import logger
 from pytt.distributed import collect_obj_on_rank0
 from pytt.iteration_info import BatchInfo
+from pytt.utils import indent
 
 class Tester:
     def __init__(self, model, batch_iterator, batch_info_class=BatchInfo):
@@ -43,5 +44,12 @@ class Tester:
             if not dist.is_initialized()\
                or dist.is_initialized() and dist.get_rank() == 0:
                 self.total_batch_info += self.current_batch_info
-                logger.log(self.total_batch_info)
+                logger.log(self.get_log_string())
             self.current_batch_info = 0
+
+    def get_log_string(self):
+        log_string = ""
+        log_string += str(self.batch_iterator.iterator_info())
+        log_string += "\n  Running Stats:\n"
+        log_string += indent(str(self.total_batch_info), "    ")
+        return log_string

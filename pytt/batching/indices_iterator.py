@@ -47,9 +47,8 @@ class SequentialIndicesIterator(AbstractIndicesIterator):
         return self.source_length
 
     def iterator_info(self):
-        return {
-            "batches_seen":self.batches_seen, "samples_seen":self.samples_seen,
-            "iter_length":len(self)}
+        return StandardIteratorInfo(self.batches_seen, len(self),
+                                    self.samples_seen)
 
     def set_batch_iter(self, batch_size):
         """
