@@ -61,7 +61,7 @@ def spawn_function():
     val_batcher = TestSummarizationBatcher(tokenizer)
     val_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/val_processed.data')
     train_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/val_processed.data')
-    batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=None, num_workers=5)
+    batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=3, num_workers=5)
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15, random=True, iterations=len(batch_iterator.indices_iterator)), subbatches=3, num_workers=5)
     optimizer = Adam([p for p in model.parameters()])
     trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator)

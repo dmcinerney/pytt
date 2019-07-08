@@ -53,17 +53,17 @@ class Trainer:
                   grad_mod=None):
         # record iterator info
         iteration_info.set_iterator_info(self.batch_iterator.iterator_info())
+        # take val step
+        if self.val_iterator is not None\
+           and ((iteration_info.iterator_info.batches_seen
+                 + int(not iteration_info.iterator_info.take_step))
+                % self.val_every) == 0:
+            self.iteration_valstep(iteration_info, loss_func,
+                                   statistics_func=statistics_func)
         # take train step
         self.iteration_trainstep(iteration_info, batch, loss_func,
                                  statistics_func=statistics_func,
                                  grad_mod=grad_mod)
-        # take val step
-        if self.val_iterator is not None\
-           and iteration_info.iterator_info.take_step\
-           and (iteration_info.iterator_info.batches_seen
-                % self.val_every) == 0:
-            self.iteration_valstep(iteration_info, loss_func,
-                                   statistics_func=statistics_func)
         # register iteration
         if self.tracker is not None:
             self.tracker.register_iteration(iteration_info)
