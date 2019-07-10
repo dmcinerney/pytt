@@ -165,8 +165,8 @@ class RandomIndicesIterator(AbstractIndicesIterator):
         if epochs is None and isinstance(iterations, int):
             return True
         elif (isinstance(epochs, bool) and epochs == True\
-             and isinstance(iterations, int)) or (isinstance(epochs, int)\
-             and iterations is None):
+              and isinstance(iterations, int))\
+             or (isinstance(epochs, int) and iterations is None):
             return False
         else:
             raise Exception

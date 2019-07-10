@@ -178,51 +178,31 @@ class SubbatchIndicesIterator:
         self.indices_iterator = indices_iterator
         self.indices_iterator_lookahead = copy.deepcopy(self.indices_iterator)
         self.subbatches_per_process = subbatches_per_process
-        self.subbatches_seen = 0
-        self.samples_in_batch_seen = 0
-        if dist.is_initialized():
-            self.rank, self.worldsize = dist.get_rank(), dist.get_world_size()
-        else:
-            self.rank, self.worldsize = None, None
+        self.subbatches = None
         self.current_batch_indices = None
-        self.current_process_indices = None
 
     def __iter__(self):
         return self
 
     def __next__(self):
         """
-        Selects only the subset of the batch as a function of the rank and
-        worldsize of the current process group
+        Selects a subset of the current batch as defined by the subbatches
+        object
         """
-        if self.take_step():
-            self.subbatches_seen = 0
-            self.samples_in_batch_seen = 0
-        if self.subbatches_seen == 0:
+        if self.subbatches is None or self.take_step():
             self.current_batch_indices = next(self.indices_iterator_lookahead)
-            if dist.is_initialized():
-                i, j = split_range(len(self.current_batch_indices),
-                                   self.worldsize, self.rank)
-                self.current_process_indices = self.current_batch_indices[i:j]
-            else:
-                self.current_process_indices = self.current_batch_indices
-        if self.subbatches_per_process is not None:
-            i, j = split_range(len(self.current_process_indices),
-                               self.subbatches_per_process,
-                               self.subbatches_seen)
-            indices = self.current_process_indices[i:j]
-        else:
-            indices = self.current_process_indices
-        self.subbatches_seen += 1
-        self.samples_in_subbatch = len(indices)
-        self.samples_in_batch_seen += len(indices)
+            self.subbatches = Subbatches(
+                len(self.current_batch_indices),
+                sequential_subbatches=self.subbatches_per_process
+            )
+        i, j = next(self.subbatches)
+        indices = self.current_batch_indices[i:j]
         if self.take_step():
             next(self.indices_iterator)
         return indices
 
     def take_step(self):
-        return self.subbatches_per_process is None\
-               or self.subbatches_seen >= self.subbatches_per_process
+        return self.subbatches.last_subbatch()
 
     def iterator_info(self):
         info = self.indices_iterator.iterator_info()
@@ -230,98 +210,146 @@ class SubbatchIndicesIterator:
             batches_seen=info.batches_seen,
             total_batches=info.total_batches,
             samples_seen=info.samples_seen,
-            samples_in_subbatch=self.samples_in_subbatch,
-            samples_in_fullbatch=len(self.current_batch_indices),
-            take_step=self.take_step(),
-            sequential_batch_num=self.subbatches_seen
-                if self.subbatches_per_process else None,
-            sequential_batches=self.subbatches_per_process,
-            rank=self.rank,
-            worldsize=self.worldsize,
+            subbatches=copy.deepcopy(self.subbatches),
             epochs_seen=info.epochs_seen
         )
 
 
 # TODO: add comments
 class SubbatchIteratorInfo(StandardIteratorInfo):
-    def __init__(self, batches_seen, total_batches, samples_seen,
-                 samples_in_subbatch, samples_in_fullbatch, take_step,
-                 sequential_batch_num=None, sequential_batches=None, rank=None,
-                 worldsize=None, epochs_seen=None):
+    def __init__(self, batches_seen, total_batches, samples_seen, subbatches,
+                 epochs_seen=None):
         super(SubbatchIteratorInfo, self).__init__(batches_seen, total_batches,
                                                    samples_seen,
                                                    epochs_seen=epochs_seen)
-        self.samples_in_subbatch = samples_in_subbatch
-        self.samples_in_fullbatch = samples_in_fullbatch
-        self.take_step = take_step
-        self.sequential_batch_num = sequential_batch_num
-        self.sequential_batches = sequential_batches
-        self.rank = rank
-        self.worldsize = worldsize
+        self.subbatches = subbatches
 
     def __str__(self):
         base = super(SubbatchIteratorInfo, self).__str__()
-        base += ", batch_size: "+str(self.samples_in_fullbatch)
+        base += ", batch_size: "+str(self.subbatches.samples_in_fullbatch)
         return base
 
     def subbatch_str(self):
-        base = "\tsamples_in_subbatch: "+str(self.samples_in_subbatch)
-        if self.sequential_batch_num is not None:
-            base += ", sequential_batch_num: "+str(self.sequential_batch_num)
-        if self.rank is not None:
-            base += ", rank: "+str(self.rank)
-        return base
-
-    def __add__(self, subbatch_iterator_info):
-        return self.__class__(
-            batches_seen=subbatch_iterator_info.batches_seen,
-            total_batches=subbatch_iterator_info.total_batches,
-            samples_seen=subbatch_iterator_info.samples_seen,
-            samples_in_subbatch=self.samples_in_subbatch
-                                +subbatch_iterator_info.samples_in_subbatch,
-            samples_in_fullbatch=subbatch_iterator_info.samples_in_fullbatch,
-            take_step=self.take_step or subbatch_iterator_info.take_step,
-            sequential_batch_num=subbatch_iterator_info.sequential_batch_num,
-            sequential_batches=subbatch_iterator_info.sequential_batches,
-            rank=subbatch_iterator_info.rank,
-            worldsize=subbatch_iterator_info.worldsize,
-            epochs_seen=subbatch_iterator_info.epochs_seen,
-        )
+        return str(self.subbatches)
 
     def to_tensor(self):
-        return torch.tensor([
-            i for i in [
-                self.batches_seen,
-                self.total_batches,
-                self.samples_seen,
-                self.samples_in_subbatch,
-                self.samples_in_fullbatch,
-                int(self.take_step),
-                self.sequential_batch_num,
-                self.sequential_batches,
-                self.rank,
-                self.worldsize
-            ] if i is not None
-        ])
+        numbers = []
+        for name in [
+            'batches_seen',
+            'total_batches',
+            'samples_seen',
+            'epochs_seen',
+        ]:
+            attr = getattr(self, name)
+            if attr is not None:
+                numbers.append(attr)
+        return torch.cat((torch.tensor(numbers),
+                          self.subbatches.to_tensor()), 0)
 
     def from_tensor(self, tensor, isiter=False):
         if not isiter:
             tensor_iter = iter(tensor)
         else:
             tensor_iter = tensor
-        for attribute in [
+        for name in [
             'batches_seen',
             'total_batches',
             'samples_seen',
+            'epochs_seen',
+        ]:
+            if getattr(self, name) is not None:
+                setattr(self, name, int(next(tensor_iter).item()))
+        self.subbatches.from_tensor(tensor_iter, isiter=True)
+        return self
+
+class Subbatches:
+    def __init__(self, samples_in_fullbatch, sequential_subbatches=None):
+        self.samples_in_subbatch = None
+        self.samples_in_fullbatch = samples_in_fullbatch
+        self.sequential_subbatch_num = -1
+        self.max_sequential_subbatches = sequential_subbatches\
+            if sequential_subbatches is not None else 1
+        if dist.is_initialized():
+            self.rank, self.world_size = dist.get_rank(), dist.get_world_size()
+        else:
+            self.rank, self.world_size = None, None
+        i, j = self.peek(rank=self.rank)
+        self.sequential_subbatches = min(
+            self.max_sequential_subbatches, j-i)
+
+    def peek(self, rank=None, sequential_subbatch_num=None):
+        i, j = 0, self.samples_in_fullbatch
+        if rank is not None:
+            if not dist.is_initialized():
+                raise Exception
+            i, j = split_range(j-i, self.world_size, self.rank)
+        if sequential_subbatch_num is not None:
+            offset = i
+            i, j = split_range(j-i, self.max_sequential_subbatches,
+                               self.sequential_subbatch_num)
+            i, j = i+offset, j+offset
+        return i, j
+
+    def get_ranks(self):
+        if not dist.is_initialized():
+            return None
+        for rank in range(self.world_size):
+            i, j = self.peek(rank=rank)
+            if j-i > 0:
+                ranks.append(rank)
+        return ranks
+
+    def __next__(self):
+        self.sequential_subbatch_num += 1
+        if self.sequential_subbatch_num >= self.sequential_subbatches:
+            raise StopIteration
+        i, j = self.peek(rank=self.rank,
+                         sequential_subbatch_num=self.sequential_subbatch_num)
+        self.samples_in_subbatch = j-i
+        return i, j
+
+    def last_subbatch(self):
+        return self.sequential_subbatch_num + 1 == self.sequential_subbatches
+
+    def __str__(self):
+        base = "samples_in_subbatch: "+str(self.samples_in_subbatch)
+        if self.sequential_subbatch_num is not None:
+            base += ", sequential_subbatch_num: "\
+                    +str(self.sequential_subbatch_num)
+        if self.rank is not None:
+            base += ", rank: "+str(self.rank)
+        return base
+
+    def to_tensor(self):
+        numbers = []
+        for name in [
             'samples_in_subbatch',
             'samples_in_fullbatch',
-            'take_step',
-            'sequential_batch_num',
-            'sequential_batches',
+            'sequential_subbatch_num',
+            'max_sequential_subbatches',
             'rank',
-            'worldsize'
+            'world_size',
+            'sequential_subbatches'
         ]:
-            if getattr(self, attribute) is not None:
-                cast = int if attribute != 'take_step' else bool
-                setattr(self, attribute, cast(next(tensor_iter)))
+            attr = getattr(self, name)
+            if attr is not None:
+                numbers.append(attr)
+        return torch.tensor(numbers)
+
+    def from_tensor(self, tensor, isiter=False):
+        if not isiter:
+            tensor_iter = iter(tensor)
+        else:
+            tensor_iter = tensor
+        for name in [
+            'samples_in_subbatch',
+            'samples_in_fullbatch',
+            'sequential_subbatch_num',
+            'max_sequential_subbatches',
+            'rank',
+            'world_size',
+            'sequential_subbatches'
+        ]:
+            if getattr(self, name) is not None:
+                setattr(self, name, int(next(tensor_iter).item()))
         return self

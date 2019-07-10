@@ -20,6 +20,7 @@ from pytt.utils import MultiBatchGradMod
 from pytt.logger import logger
 from pytt.iteration_info import IterationInfo
 from pytt.training.tracker import Tracker
+from pytt.iteration_info import BatchInfo
 
 
 # TODO: fix and add comments
@@ -30,7 +31,7 @@ class Trainer:
     """
     def __init__(self, model, optimizer, batch_iterator, val_iterator=None,
                  val_every=1, tracker=Tracker(), checkpoint_folder=None,
-                 checkpoint_every=1):
+                 checkpoint_every=1, batch_info_class=BatchInfo):
         self.model = model
         if dist.is_initialized() and not isinstance(self.model, LDDP):
             raise Exception
@@ -41,6 +42,7 @@ class Trainer:
         self.tracker = tracker
         self.checkpoint_folder = checkpoint_folder
         self.checkpoint_every = checkpoint_every
+        self.batch_info_class = batch_info_class
 
     def train(self, loss_func, statistics_func=None, grad_mod=None,
               iter_info_class=IterationInfo):
@@ -55,8 +57,8 @@ class Trainer:
         iteration_info.set_iterator_info(self.batch_iterator.iterator_info())
         # take val step
         if self.val_iterator is not None\
-           and ((iteration_info.iterator_info.batches_seen
-                 + int(not iteration_info.iterator_info.take_step))
+           and iteration_info.iterator_info.subbatches.last_subbatch()\
+           and (iteration_info.iterator_info.batches_seen
                 % self.val_every) == 0:
             self.iteration_valstep(iteration_info, loss_func,
                                    statistics_func=statistics_func)
@@ -81,8 +83,8 @@ class Trainer:
                                         statistics_func=statistics_func,
                                         enable_grad=True)
         # record training info
-        iteration_info.set_train_info(
-            {k:v.item() for k,v in train_info.items()})
+        iteration_info.set_train_info(self.batch_info_class(
+            {k:v.item() for k,v in train_info.items()}))
 
         # calculate gradients
         self.calculate_grads(train_info["loss"])
@@ -92,12 +94,16 @@ class Trainer:
     def iteration_valstep(self, iteration_info, loss_func,
                           statistics_func=None):
         # process validation batch
-        val_info = self.process_batch(next(self.val_iterator), loss_func,
-                                      statistics_func=statistics_func,
-                                      enable_grad=False)
+        val_info = 0
+        while True:
+            val_info += self.batch_info_class(
+                self.process_batch(next(self.val_iterator), loss_func,
+                                   statistics_func=statistics_func,
+                                   enable_grad=False))
+            if self.val_iterator.take_step():
+                break
         # record validation info
-        iteration_info.set_val_info(
-            {k:v.item() for k,v in val_info.items()})
+        iteration_info.set_train_info(val_info)
 
     def process_batch(self, batch, loss_func, statistics_func=None,
                       enable_grad=True):
