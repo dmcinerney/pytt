@@ -96,14 +96,15 @@ class Trainer:
         # process validation batch
         val_info = 0
         while True:
-            val_info += self.batch_info_class(
+            val_info += self.batch_info_class({
+                k:v.item() for k,v in\
                 self.process_batch(next(self.val_iterator), loss_func,
                                    statistics_func=statistics_func,
-                                   enable_grad=False))
+                                   enable_grad=False).items()})
             if self.val_iterator.take_step():
                 break
         # record validation info
-        iteration_info.set_train_info(val_info)
+        iteration_info.set_val_info(val_info)
 
     def process_batch(self, batch, loss_func, statistics_func=None,
                       enable_grad=True):
