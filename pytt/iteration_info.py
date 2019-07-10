@@ -50,16 +50,6 @@ class IterationInfo:
         return self
 
     def log_iteration(self, full_batch=True):
-        if not full_batch:
-            self.log_subbatch()
-        else:
-            self.log_fullbatch()
-
-    def log_subbatch(self):
-        logger.log(indent(self.iterator_info.subbatch_str(), "        "),
-                   verbosity=2)
-
-    def log_fullbatch(self):
         step_info = str(self.iterator_info)
         step_info += "\n  TRAIN\n"+indent(str(self.train_info), "    ")
         if self.val_info is not None:

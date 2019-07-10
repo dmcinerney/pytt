@@ -11,24 +11,16 @@ class Tracker:
         self._history = history
 
     def register_iteration(self, iteration_info):
-        if len(self._history) == 0\
-           or self._history[-1].iterator_info.subbatches.last_subbatch():
-            self._history.append(iteration_info)
-        else:
-            self._history[-1] = self._history[-1] + iteration_info
-
-        self._history[-1].log_iteration(full_batch=False)
-
-        if self._history[-1].iterator_info.subbatches.last_subbatch():
-            if dist.is_initialized():
-                collected = collect_obj_on_rank0(self._history[-1])
-                if collected is not None:
-                    self._history[-1] = sum(collected)
-                    self._history[-1].log_iteration()
-                else:
-                    self._history = []
-            else:
+        self._history.append(iteration_info)
+        if dist.is_initialized():
+            collected = collect_obj_on_rank0(self._history[-1])
+            if collected is not None:
+                self._history[-1] = sum(collected)
                 self._history[-1].log_iteration()
+            else:
+                self._history = []
+        else:
+            self._history[-1].log_iteration()
 
     @property
     def history(self):

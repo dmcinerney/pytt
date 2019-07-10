@@ -21,6 +21,7 @@ from pytt.logger import logger
 from pytt.iteration_info import IterationInfo
 from pytt.training.tracker import Tracker
 from pytt.iteration_info import BatchInfo
+from pytt.utils import indent
 
 
 # TODO: fix and add comments
@@ -46,26 +47,29 @@ class Trainer:
 
     def train(self, loss_func, statistics_func=None, grad_mod=None,
               iter_info_class=IterationInfo):
-        for batch in self.batch_iterator:
-            iteration_info = iter_info_class()
-            self.iteration(iteration_info, batch, loss_func,
-                           statistics_func=statistics_func, grad_mod=grad_mod)
+        try:
+            while True:
+                iteration_info = iter_info_class()
+                self.iteration(iteration_info, loss_func,
+                    statistics_func=statistics_func, grad_mod=grad_mod)
+        except StopIteration:
+            pass
 
-    def iteration(self, iteration_info, batch, loss_func, statistics_func=None,
+    def iteration(self, iteration_info, loss_func, statistics_func=None,
                   grad_mod=None):
-        # record iterator info
-        iteration_info.set_iterator_info(self.batch_iterator.iterator_info())
         # take val step
+        batches_seen = self.batch_iterator.iterator_info().batches_seen
         if self.val_iterator is not None\
-           and iteration_info.iterator_info.subbatches.last_subbatch()\
-           and (iteration_info.iterator_info.batches_seen
+           and ((batches_seen+1)
                 % self.val_every) == 0:
             self.iteration_valstep(iteration_info, loss_func,
                                    statistics_func=statistics_func)
         # take train step
-        self.iteration_trainstep(iteration_info, batch, loss_func,
+        self.iteration_trainstep(iteration_info, loss_func,
                                  statistics_func=statistics_func,
                                  grad_mod=grad_mod)
+        # record iterator info
+        iteration_info.set_iterator_info(self.batch_iterator.iterator_info())
         # register iteration
         if self.tracker is not None:
             self.tracker.register_iteration(iteration_info)
@@ -76,20 +80,26 @@ class Trainer:
                 % self.checkpoint_every) == 0:
             self.save_state(self.checkpoint_folder)
 
-    def iteration_trainstep(self, iteration_info, batch, loss_func,
+    def iteration_trainstep(self, iteration_info, loss_func,
                             statistics_func=None, grad_mod=None):
-        # process training batch
-        train_info = self.process_batch(batch, loss_func,
-                                        statistics_func=statistics_func,
-                                        enable_grad=True)
+        train_info = 0
+        while True:
+            # process training batch
+            train_info_dict = self.process_batch(self.next_training_batch(), loss_func,
+                                                 statistics_func=statistics_func,
+                                                 enable_grad=True)
+            logger.log(indent(self.batch_iterator.iterator_info().subbatch_str(),
+                              "        "), verbosity=2)
+            # calculate gradients
+            self.calculate_grads(train_info_dict["loss"])
+            train_info += self.batch_info_class(
+                {k:v.item() for k,v in train_info_dict.items()})
+            if self.batch_iterator.take_step():
+                break
         # record training info
-        iteration_info.set_train_info(self.batch_info_class(
-            {k:v.item() for k,v in train_info.items()}))
-
-        # calculate gradients
-        self.calculate_grads(train_info["loss"])
-        # take step if the iterator says to
-        self.step(grad_mod=grad_mod, denominator=train_info["_batch_length"])
+        iteration_info.set_train_info(train_info)
+        # take step
+        self.step(grad_mod=grad_mod, denominator=train_info.batch_info_dict["_batch_length"])
 
     def iteration_valstep(self, iteration_info, loss_func,
                           statistics_func=None):
@@ -131,12 +141,11 @@ class Trainer:
         loss.backward()
 
     def step(self, grad_mod=None, denominator=1):
-        if self.batch_iterator.take_step():
-            multi_batch_grad_mod = MultiBatchGradMod(denominator)
-            if grad_mod is not None:
-                grad_mod(list(self.model.parameters()))
-            self.optimizer.step()
-            self.optimizer.zero_grad()
+        multi_batch_grad_mod = MultiBatchGradMod(denominator)
+        if grad_mod is not None:
+            grad_mod(list(self.model.parameters()))
+        self.optimizer.step()
+        self.optimizer.zero_grad()
 
     def save_state(self, folder):
         if dist.is_initialized() and dist.get_rank() != 0:
@@ -154,3 +163,6 @@ class Trainer:
                 os.path.join(folder, 'val_indices_iterator.pkl'))
         # TODO: fix this so that history is appended rather than resaved
         self.tracker.save(os.path.join(folder, 'tracker.pkl'))
+
+    def next_training_batch(self):
+        return next(self.batch_iterator)
