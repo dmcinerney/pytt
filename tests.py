@@ -66,11 +66,11 @@ def spawn_function():
     optimizer = Adam([p for p in model.parameters()])
     trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, print_every=10)
     logger.set_verbosity(1)
-    trainer.train(loss_func, statistics_func=error_func)
-    #logger.log("\n\nTESTING")
-    #val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=None)
-    #tester = Tester(model, val_iterator)
-    #tester.test(loss_func, statistics_func=error_func)
+    trainer.train(loss_func, statistics_func=error_func) #, use_pbar=False)
+    logger.log("\n\nTESTING")
+    val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=None)
+    tester = Tester(model, val_iterator)
+    tester.test(loss_func, statistics_func=error_func)
 
 if __name__ == '__main__':
     seed_state()
