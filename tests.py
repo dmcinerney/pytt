@@ -24,7 +24,7 @@ from pytt.batching.indices_iterator import init_indices_iterator
 from pytt.nlp.tokenizer import Tokenizer
 from torch import nn
 from pytt.utils import get_random_state, seed_state
-from pytt.distributed import distributed_wrapper, setup
+from pytt.distributed import distributed_wrapper, setup, log_bool
 from torch.nn.parallel import DistributedDataParallel as DDP
 from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
 from torch.optim import Adam
@@ -67,7 +67,8 @@ def spawn_function():
     trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, print_every=10)
     logger.set_verbosity(1)
     trainer.train(loss_func, statistics_func=error_func) #, use_pbar=False)
-    logger.log("\n\nTESTING")
+    if log_bool():
+        logger.log("\n\nTESTING")
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=None)
     tester = Tester(model, val_iterator)
     tester.test(loss_func, statistics_func=error_func)

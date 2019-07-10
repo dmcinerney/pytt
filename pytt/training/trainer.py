@@ -17,12 +17,12 @@ import torch.distributed as dist
 #from torch.nn import DistributedDataParallel as DDP
 from fairseq.legacy_distributed_data_parallel\
     import LegacyDistributedDataParallel as LDDP
-from pytt.utils import MultiBatchGradMod
+from pytt.distributed import log_bool
 from pytt.logger import logger
 from pytt.iteration_info import IterationInfo
 from pytt.training.tracker import Tracker
 from pytt.iteration_info import BatchInfo
-from pytt.utils import indent
+from pytt.utils import MultiBatchGradMod, indent
 
 
 # TODO: fix and add comments
@@ -52,7 +52,7 @@ class Trainer:
     def train(self, loss_func, statistics_func=None, grad_mod=None,
               iter_info_class=IterationInfo, use_pbar=True):
         if use_pbar:
-            if self.log_bool():
+            if log_bool():
                 self.pbar = tqdm(total=len(self.batch_iterator.indices_iterator),
                                  mininterval=1)
             logger.set_progress_bar(tqdm)
@@ -62,7 +62,7 @@ class Trainer:
                 self.iteration(iteration_info, loss_func,
                     statistics_func=statistics_func, grad_mod=grad_mod)
         except StopIteration:
-            if use_pbar and self.log_bool():
+            if use_pbar and log_bool():
                 self.pbar.close()
                 self.pbar = None
 
@@ -84,13 +84,13 @@ class Trainer:
         self.tracker.register_iteration(iteration_info)
         if (iteration_info.iterator_info.batches_seen
             % self.print_every) == 0\
-           and self.log_bool():
+           and log_bool():
             logger.log(str(self.tracker))
         # save state to file
         if self.checkpoint_folder is not None\
            and (iteration_info.iterator_info.batches_seen
                 % self.checkpoint_every) == 0\
-           and self.log_bool():
+           and log_bool():
             self.save_state(self.checkpoint_folder)
 
     def iteration_trainstep(self, iteration_info, loss_func,
@@ -98,7 +98,7 @@ class Trainer:
         train_info = 0
         while True:
             # process training batch
-            train_info_dict = self.process_batch(self.next_training_batch(), loss_func,
+            train_info_dict = self.process_batch(self.next_batch(), loss_func,
                                                  statistics_func=statistics_func,
                                                  enable_grad=True)
             iterator_info = self.batch_iterator.iterator_info()
@@ -178,13 +178,9 @@ class Trainer:
         # TODO: fix this so that history is appended rather than resaved
         self.tracker.save(os.path.join(folder, 'tracker.pkl'))
 
-    def next_training_batch(self):
+    def next_batch(self):
         batch = next(self.batch_iterator)
         if self.pbar is not None\
            and self.batch_iterator.take_step():
             self.pbar.update()
         return batch
-
-    def log_bool(self):
-        return not dist.is_initialized()\
-               or dist.is_initialized() and dist.get_rank() == 0

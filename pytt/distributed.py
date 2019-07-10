@@ -96,3 +96,7 @@ def collect_obj_on_rank0(obj, ranks=None):
         return None
     collected = [copy.deepcopy(obj).from_tensor(tensor) for tensor in tensors]
     return collected
+
+def log_bool():
+    return not dist.is_initialized()\
+           or dist.is_initialized() and dist.get_rank() == 0
