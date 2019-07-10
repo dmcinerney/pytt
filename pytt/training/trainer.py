@@ -83,7 +83,6 @@ class Trainer:
             logger.log(str(self.tracker))
         # save state to file
         if self.checkpoint_folder is not None\
-           and iteration_info.iterator_info.take_step\
            and (iteration_info.iterator_info.batches_seen
                 % self.checkpoint_every) == 0\
            and self.log_bool():
