@@ -11,6 +11,7 @@
 #   contains classmethod to load checkpoint from folder
 
 import os
+from tqdm import tqdm
 import torch
 import torch.distributed as dist
 #from torch.nn import DistributedDataParallel as DDP
@@ -31,22 +32,31 @@ class Trainer:
     val_iterator with saving and loading capabilities
     """
     def __init__(self, model, optimizer, batch_iterator, val_iterator=None,
-                 val_every=1, tracker=Tracker(), checkpoint_folder=None,
-                 checkpoint_every=1, batch_info_class=BatchInfo):
+                 tracker=Tracker(), checkpoint_folder=None,
+                 batch_info_class=BatchInfo, use_pbar=True, val_every=1,
+                 checkpoint_every=1, print_every=1):
         self.model = model
         if dist.is_initialized() and not isinstance(self.model, LDDP):
             raise Exception
         self.optimizer = optimizer
         self.batch_iterator = batch_iterator
+        if (not dist.is_initialized()
+            or (dist.is_initialized() and dist.get_rank() == 0))\
+           and use_pbar:
+            self.pbar = tqdm(total=len(self.batch_iterator.indices_iterator), mininterval=1)
+        else:
+            self.pbar = None
         self.val_iterator = val_iterator
-        self.val_every = val_every
         self.tracker = tracker
         self.checkpoint_folder = checkpoint_folder
-        self.checkpoint_every = checkpoint_every
         self.batch_info_class = batch_info_class
+        self.val_every = val_every
+        self.checkpoint_every = checkpoint_every
+        self.print_every = print_every
 
     def train(self, loss_func, statistics_func=None, grad_mod=None,
               iter_info_class=IterationInfo):
+        logger.set_progress_bar(self.pbar)
         try:
             while True:
                 iteration_info = iter_info_class()
@@ -60,8 +70,7 @@ class Trainer:
         # take val step
         batches_seen = self.batch_iterator.iterator_info().batches_seen
         if self.val_iterator is not None\
-           and ((batches_seen+1)
-                % self.val_every) == 0:
+           and ((batches_seen+1) % self.val_every) == 0:
             self.iteration_valstep(iteration_info, loss_func,
                                    statistics_func=statistics_func)
         # take train step
@@ -71,8 +80,10 @@ class Trainer:
         # record iterator info
         iteration_info.set_iterator_info(self.batch_iterator.iterator_info())
         # register iteration
-        if self.tracker is not None:
-            self.tracker.register_iteration(iteration_info)
+        self.tracker.register_iteration(iteration_info)
+        if (iteration_info.iterator_info.batches_seen
+            % self.print_every) == 0:
+            self.tracker.log_last_iteration()
         # save state to file
         if self.checkpoint_folder is not None\
            and iteration_info.iterator_info.take_step\
@@ -88,8 +99,11 @@ class Trainer:
             train_info_dict = self.process_batch(self.next_training_batch(), loss_func,
                                                  statistics_func=statistics_func,
                                                  enable_grad=True)
-            logger.log(indent(self.batch_iterator.iterator_info().subbatch_str(),
-                              "        "), verbosity=2)
+            iterator_info = self.batch_iterator.iterator_info()
+            if ((iterator_info.batches_seen + int(not self.batch_iterator.take_step()))
+                % self.print_every) == 0:
+                logger.log(indent(iterator_info.subbatch_str(),
+                                  "        "), verbosity=2)
             # calculate gradients
             self.calculate_grads(train_info_dict["loss"])
             train_info += self.batch_info_class(
@@ -165,4 +179,8 @@ class Trainer:
         self.tracker.save(os.path.join(folder, 'tracker.pkl'))
 
     def next_training_batch(self):
-        return next(self.batch_iterator)
+        batch = next(self.batch_iterator)
+        if self.pbar is not None\
+           and self.batch_iterator.take_step():
+            self.pbar.update()
+        return batch

@@ -64,18 +64,18 @@ def spawn_function():
     batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=13)
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15, random=True, iterations=len(batch_iterator.indices_iterator)), subbatches=13)
     optimizer = Adam([p for p in model.parameters()])
-    trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator)
-    logger.set_verbosity(2)
+    trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, print_every=10)
+    logger.set_verbosity(1)
     trainer.train(loss_func, statistics_func=error_func)
-    logger.log("\n\nTESTING")
-    val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=None)
-    tester = Tester(model, val_iterator)
-    tester.test(loss_func, statistics_func=error_func)
+    #logger.log("\n\nTESTING")
+    #val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=None)
+    #tester = Tester(model, val_iterator)
+    #tester.test(loss_func, statistics_func=error_func)
 
 if __name__ == '__main__':
     seed_state()
-    nprocs = 2
-    distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
-    distributed_spawn_function()
+    # nprocs = 2
+    # distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
+    # distributed_spawn_function()
     # setup(0,1)
-    # spawn_function()
+    spawn_function()

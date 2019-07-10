@@ -293,6 +293,7 @@ class Subbatches:
     def get_ranks(self):
         if not dist.is_initialized():
             return None
+        ranks = []
         for rank in range(self.world_size):
             i, j = self.peek(rank=rank)
             if j-i > 0:

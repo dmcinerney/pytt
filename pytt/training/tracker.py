@@ -8,27 +8,23 @@ class Tracker:
         return cls(read_pickle(filename))
 
     def __init__(self, history=[]):
-        self._history = history
+        self.history = history
 
     def register_iteration(self, iteration_info):
-        self._history.append(iteration_info)
+        self.history.append(iteration_info)
         if dist.is_initialized():
-            collected = collect_obj_on_rank0(self._history[-1])
+            collected = collect_obj_on_rank0(
+                self.history[-1],
+                ranks=self.history[-1].iterator_info.subbatches.get_ranks())
             if collected is not None:
-                self._history[-1] = sum(collected)
-                self._history[-1].log_iteration()
+                self.history[-1] = sum(collected)
             else:
-                self._history = []
-        else:
-            self._history[-1].log_iteration()
+                self.history = []
 
-    @property
-    def history(self):
-        if len(self._history) == 0\
-           or self._history[-1].iterator_info.subbatches.last_subbatch():
-            return self._history
-        else:
-            return self._history[:-1]
+    def log_last_iteration(self):
+        if not dist.is_initialized()\
+           or (dist.is_initialized() and dist.get_rank() == 0):
+            self.history[-1].log_iteration()
 
     def save(self, filename):
         write_pickle(self.history, filename)

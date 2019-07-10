@@ -70,7 +70,7 @@ def distributed_wrapper(func, nprocs, random_state=None,
              join=True)
     return func_wrapper
 
-def collect_tensors_on_rank0(tensor):
+def collect_tensors_on_rank0(tensor, ranks=None):
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     if rank != 0:
@@ -78,14 +78,20 @@ def collect_tensors_on_rank0(tensor):
         return None
     else:
         tensors = [tensor]
-        for i in range(1,world_size):
+        if ranks is None:
+            ranks = range(world_size)
+        ranks = set(ranks)
+        if 0 not in ranks:
+            raise Exception
+        ranks = ranks-set([0])
+        for i in ranks:
             new_tensor = torch.zeros_like(tensor)
             dist.recv(new_tensor, i)
             tensors.append(new_tensor)
         return tensors
 
-def collect_obj_on_rank0(obj):
-    tensors = collect_tensors_on_rank0(obj.to_tensor())
+def collect_obj_on_rank0(obj, ranks=None):
+    tensors = collect_tensors_on_rank0(obj.to_tensor(), ranks=ranks)
     if tensors is None:
         return None
     collected = [copy.deepcopy(obj).from_tensor(tensor) for tensor in tensors]
