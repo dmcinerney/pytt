@@ -21,10 +21,8 @@ class Tracker:
             else:
                 self.history = []
 
-    def log_last_iteration(self):
-        if not dist.is_initialized()\
-           or (dist.is_initialized() and dist.get_rank() == 0):
-            self.history[-1].log_iteration()
+    def __str__(self):
+        return str(self.history[-1])
 
     def save(self, filename):
         write_pickle(self.history, filename)

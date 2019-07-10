@@ -40,12 +40,8 @@ class Trainer:
             raise Exception
         self.optimizer = optimizer
         self.batch_iterator = batch_iterator
-        if (not dist.is_initialized()
-            or (dist.is_initialized() and dist.get_rank() == 0))\
-           and use_pbar:
-            self.pbar = tqdm(total=len(self.batch_iterator.indices_iterator), mininterval=1)
-        else:
-            self.pbar = None
+        self.pbar = tqdm(total=len(self.batch_iterator.indices_iterator),
+                         mininterval=1) if use_pbar else None
         self.val_iterator = val_iterator
         self.tracker = tracker
         self.checkpoint_folder = checkpoint_folder
@@ -82,13 +78,15 @@ class Trainer:
         # register iteration
         self.tracker.register_iteration(iteration_info)
         if (iteration_info.iterator_info.batches_seen
-            % self.print_every) == 0:
-            self.tracker.log_last_iteration()
+            % self.print_every) == 0\
+           and self.log_bool():
+            logger.log(str(self.tracker))
         # save state to file
         if self.checkpoint_folder is not None\
            and iteration_info.iterator_info.take_step\
            and (iteration_info.iterator_info.batches_seen
-                % self.checkpoint_every) == 0:
+                % self.checkpoint_every) == 0\
+           and self.log_bool():
             self.save_state(self.checkpoint_folder)
 
     def iteration_trainstep(self, iteration_info, loss_func,
@@ -162,8 +160,6 @@ class Trainer:
         self.optimizer.zero_grad()
 
     def save_state(self, folder):
-        if dist.is_initialized() and dist.get_rank() != 0:
-            return
         # save model state
         torch.save(self.model.state_dict(),
                    os.path.join(folder, 'model_state.tpkl'))
@@ -184,3 +180,7 @@ class Trainer:
            and self.batch_iterator.take_step():
             self.pbar.update()
         return batch
+
+    def log_bool(self):
+        return not dist.is_initialized()\
+               or dist.is_initialized() and dist.get_rank() == 0

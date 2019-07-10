@@ -49,12 +49,12 @@ class IterationInfo:
             raise Exception
         return self
 
-    def log_iteration(self, full_batch=True):
+    def __str__(self):
         step_info = str(self.iterator_info)
         step_info += "\n  TRAIN\n"+indent(str(self.train_info), "    ")
         if self.val_info is not None:
             step_info += "\n  VAL\n"+indent(str(self.val_info), "    ")
-        logger.log(step_info)
+        return step_info
 
     def to_tensor(self):
         tensors = []
