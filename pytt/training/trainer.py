@@ -11,7 +11,6 @@
 #   contains classmethod to load checkpoint from folder
 
 import os
-from tqdm import tqdm
 import torch
 import torch.distributed as dist
 #from torch.nn import DistributedDataParallel as DDP
@@ -23,7 +22,7 @@ from pytt.iteration_info import IterationInfo
 from pytt.training.tracker import Tracker
 from pytt.iteration_info import BatchInfo
 from pytt.utils import MultiBatchGradMod, indent
-
+from pytt.progress_bar import ProgressBar
 
 # TODO: fix and add comments
 class Trainer:
@@ -34,13 +33,13 @@ class Trainer:
     def __init__(self, model, optimizer, batch_iterator, val_iterator=None,
                  tracker=Tracker(), checkpoint_folder=None,
                  batch_info_class=BatchInfo, val_every=1,
-                 checkpoint_every=1, print_every=1):
+                 checkpoint_every=1, print_every=1, pbar=None):
         self.model = model
         if dist.is_initialized() and not isinstance(self.model, LDDP):
             raise Exception
         self.optimizer = optimizer
         self.batch_iterator = batch_iterator
-        self.pbar = None
+        self.pbar = pbar if pbar is not None else ProgressBar()
         self.val_iterator = val_iterator
         self.tracker = tracker
         self.checkpoint_folder = checkpoint_folder
@@ -52,19 +51,15 @@ class Trainer:
     def train(self, loss_func, statistics_func=None, grad_mod=None,
               iter_info_class=IterationInfo, use_pbar=True):
         if use_pbar:
-            if log_bool():
-                self.pbar = tqdm(total=len(self.batch_iterator.indices_iterator),
-                                 mininterval=1)
-            logger.set_progress_bar(tqdm)
+            self.pbar.enter(len(self.batch_iterator.indices_iterator))
         try:
             while True:
                 iteration_info = iter_info_class()
                 self.iteration(iteration_info, loss_func,
                     statistics_func=statistics_func, grad_mod=grad_mod)
         except StopIteration:
-            if use_pbar and log_bool():
-                self.pbar.close()
-                self.pbar = None
+            if use_pbar:
+                self.pbar.exit()
 
     def iteration(self, iteration_info, loss_func, statistics_func=None,
                   grad_mod=None):
@@ -180,7 +175,6 @@ class Trainer:
 
     def next_batch(self):
         batch = next(self.batch_iterator)
-        if self.pbar is not None\
-           and self.batch_iterator.take_step():
+        if self.batch_iterator.take_step():
             self.pbar.update()
         return batch

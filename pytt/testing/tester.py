@@ -1,34 +1,30 @@
-from tqdm import tqdm
 import torch
 import torch.distributed as dist
 from pytt.logger import logger
 from pytt.distributed import collect_obj_on_rank0, log_bool
 from pytt.iteration_info import BatchInfo
 from pytt.utils import indent
+from pytt.progress_bar import ProgressBar
 
 class Tester:
-    def __init__(self, model, batch_iterator, batch_info_class=BatchInfo):
+    def __init__(self, model, batch_iterator, batch_info_class=BatchInfo, pbar=None):
         self.model = model
         self.batch_iterator = batch_iterator
-        self.pbar = None
+        self.pbar = pbar if pbar is not None else ProgressBar()
         self.batch_info_class = batch_info_class
         self.current_batch_info = 0
         self.total_batch_info = 0
 
     def test(self, loss_func, statistics_func=None, use_pbar=True):
         if use_pbar:
-            if log_bool():
-                self.pbar = tqdm(total=len(self.batch_iterator.indices_iterator),
-                                 mininterval=1)
-            logger.set_progress_bar(tqdm)
+            self.pbar.enter(len(self.batch_iterator.indices_iterator))
         try:
             while True:
                 self.register_iteration(
                     self.process_batch(self.next_batch(), loss_func, statistics_func=statistics_func))
         except StopIteration:
-            if use_pbar and log_bool():
-                self.pbar.close()
-                self.pbar = None
+            if use_pbar:
+                self.pbar.exit()
         return self.total_batch_info
 
     def process_batch(self, batch, loss_func, statistics_func=None):
@@ -67,7 +63,6 @@ class Tester:
 
     def next_batch(self):
         batch = next(self.batch_iterator)
-        if self.pbar is not None\
-           and self.batch_iterator.take_step():
+        if self.batch_iterator.take_step():
             self.pbar.update()
         return batch
