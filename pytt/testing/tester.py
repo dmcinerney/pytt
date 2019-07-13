@@ -7,13 +7,14 @@ from pytt.utils import indent
 from pytt.progress_bar import ProgressBar
 
 class Tester:
-    def __init__(self, model, batch_iterator, batch_info_class=BatchInfo, pbar=None):
+    def __init__(self, model, batch_iterator, batch_info_class=BatchInfo, pbar=None, print_every=1):
         self.model = model
         self.batch_iterator = batch_iterator
         self.pbar = pbar if pbar is not None else ProgressBar()
         self.batch_info_class = batch_info_class
         self.current_batch_info = 0
         self.total_batch_info = 0
+        self.print_every = print_every
 
     def test(self, loss_func, statistics_func=None, use_pbar=True):
         if use_pbar:
@@ -51,7 +52,8 @@ class Tester:
                     self.current_batch_info = sum(collected)
             if log_bool():
                 self.total_batch_info += self.current_batch_info
-                logger.log(self.get_log_string())
+                if self.batch_iterator.iterator_info().batches_seen % self.print_every == 0:
+                    logger.log(self.get_log_string())
             self.current_batch_info = 0
 
     def get_log_string(self):

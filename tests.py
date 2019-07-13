@@ -32,6 +32,7 @@ from pytt.training.trainer import Trainer
 from pytt.logger import logger
 from pytt.training.training_controller import AbstractTrainingController
 from pytt.testing.tester import Tester
+from pytt.setup import Setup
 
 class Model(nn.Module):
     def __init__(self):
@@ -50,28 +51,72 @@ def loss_func(output):
 def error_func(*args, **kwargs):
     return {'error': torch.tensor(2*next(iter(kwargs.values())).shape[0])}
 
+#def spawn_function():
+#    model = Model()
+#    if torch.distributed.is_initialized():
+#        rank = torch.distributed.get_rank()
+#        worldsize = torch.distributed.get_world_size()
+#        model = LDDP(model.to(rank), worldsize)
+#    tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/vocab', 50000))
+#    batcher = TrainSummarizationBatcher(tokenizer)
+#    val_batcher = TestSummarizationBatcher(tokenizer)
+#    val_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/val_processed.data')
+#    train_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/val_processed.data')
+#    batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=13)
+#    val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15, random=True, iterations=len(batch_iterator.indices_iterator)), subbatches=13)
+#    optimizer = Adam([p for p in model.parameters()])
+#    trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, print_every=10)
+#    logger.set_verbosity(1)
+#    trainer.train(loss_func, statistics_func=error_func) #, use_pbar=False)
+#    if log_bool():
+#        logger.log("\n\nTESTING")
+#    val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=None)
+#    tester = Tester(model, val_iterator)
+#    tester.test(loss_func, statistics_func=error_func)
 def spawn_function():
-    model = Model()
-    if torch.distributed.is_initialized():
-        rank = torch.distributed.get_rank()
-        worldsize = torch.distributed.get_world_size()
-        model = LDDP(model.to(rank), worldsize)
-    tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/vocab', 50000))
-    batcher = TrainSummarizationBatcher(tokenizer)
-    val_batcher = TestSummarizationBatcher(tokenizer)
+    setup = Setup(Model)
     val_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/val_processed.data')
     train_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/val_processed.data')
-    batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=13)
-    val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15, random=True, iterations=len(batch_iterator.indices_iterator)), subbatches=13)
-    optimizer = Adam([p for p in model.parameters()])
-    trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, print_every=10)
+    tokenizer = Tokenizer(load_vocab('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/vocab', 50000))
+    batcher = TrainSummarizationBatcher(tokenizer)
+    training_parameters = {
+        'model_parameters':{},
+        'optimizer_parameters':{},
+        'train_iterator_parameters':{
+            'indices_iterator_parameters':{'batch_size':15, 'random':True, 'iterations':200},
+            'batch_iterator_parameters':{},
+        },
+        'val_iterator_parameters':{
+            'indices_iterator_parameters':{'batch_size':15, 'random':True},
+            'batch_iterator_parameters':{},
+        },
+        'trainer_parameters':{'print_every':10},
+    }
     logger.set_verbosity(1)
-    trainer.train(loss_func, statistics_func=error_func) #, use_pbar=False)
+    train_state = setup.train(training_parameters,
+                              batcher,
+                              train_dataset,
+                              loss_func,
+                              statistics_func=error_func,
+                              val_dataset=val_dataset)
+
     if log_bool():
         logger.log("\n\nTESTING")
-    val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=None)
-    tester = Tester(model, val_iterator)
-    tester.test(loss_func, statistics_func=error_func)
+    testing_parameters = {
+        'model_parameters':{},
+        'iterator_parameters':{
+            'indices_iterator_parameters':{'batch_size':15, 'random':True, 'iterations':200},
+            'batch_iterator_parameters':{},
+        },
+        'tester_parameters':{'print_every':10},
+    }
+    test_state = {'model_state':train_state['model_state']}
+    setup.test(testing_parameters,
+               batcher,
+               val_dataset,
+               loss_func,
+               statistics_func=error_func,
+               test_state=test_state)
 
 if __name__ == '__main__':
     seed_state()
