@@ -160,6 +160,9 @@ class Trainer:
         self.optimizer.zero_grad()
 
     def save_state(self, folder):
+        # save random state
+        write_pickle(get_random_state(),
+                     os.path.join(folder, 'random_state.pkl')
         # save model state
         torch.save(self.model.state_dict(),
                    os.path.join(folder, 'model_state.tpkl'))
