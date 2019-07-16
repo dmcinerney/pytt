@@ -22,7 +22,9 @@ class Tester:
         try:
             while True:
                 self.register_iteration(
-                    self.process_batch(self.next_batch(), loss_func, statistics_func=statistics_func))
+                    self.process_batch(next(self.batch_iterator), loss_func, statistics_func=statistics_func))
+                if self.batch_iterator.take_step():
+                    self.pbar.update()
         except StopIteration:
             if use_pbar:
                 self.pbar.exit()
@@ -62,9 +64,3 @@ class Tester:
         log_string += "\n  Running Stats:\n"
         log_string += indent(str(self.total_batch_info), "    ")
         return log_string
-
-    def next_batch(self):
-        batch = next(self.batch_iterator)
-        if self.batch_iterator.take_step():
-            self.pbar.update()
-        return batch

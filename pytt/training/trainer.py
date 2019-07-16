@@ -87,13 +87,14 @@ class Trainer:
                 % self.checkpoint_every) == 0\
            and log_bool():
             self.save_state(self.checkpoint_folder)
+        self.pbar.update()
 
     def iteration_trainstep(self, iteration_info, loss_func,
                             statistics_func=None, grad_mod=None):
         train_info = 0
         while True:
             # process training batch
-            train_info_dict = self.process_batch(self.next_batch(), loss_func,
+            train_info_dict = self.process_batch(next(self.batch_iterator), loss_func,
                                                  statistics_func=statistics_func,
                                                  enable_grad=True)
             iterator_info = self.batch_iterator.iterator_info()
@@ -172,9 +173,3 @@ class Trainer:
                 os.path.join(folder, 'val_indices_iterator.pkl'))
         # TODO: fix this so that history is appended rather than resaved
         self.tracker.save(os.path.join(folder, 'tracker.pkl'))
-
-    def next_batch(self):
-        batch = next(self.batch_iterator)
-        if self.batch_iterator.take_step():
-            self.pbar.update()
-        return batch
