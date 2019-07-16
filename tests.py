@@ -90,7 +90,7 @@ def spawn_function():
             'indices_iterator_parameters':{'batch_size':15, 'random':True},
             'batch_iterator_parameters':{},
         },
-        'trainer_parameters':{'print_every':10},
+        'trainer_parameters':{'print_every':10, 'checkpoint_folder':'test'},
     }
     logger.set_verbosity(1)
     train_state = setup.train(training_parameters,

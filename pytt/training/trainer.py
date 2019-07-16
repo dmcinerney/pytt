@@ -21,7 +21,7 @@ from pytt.logger import logger
 from pytt.iteration_info import IterationInfo
 from pytt.training.tracker import Tracker
 from pytt.iteration_info import BatchInfo
-from pytt.utils import MultiBatchGradMod, indent
+from pytt.utils import MultiBatchGradMod, indent, write_pickle, get_random_state
 from pytt.progress_bar import ProgressBar
 
 # TODO: fix and add comments
@@ -162,7 +162,7 @@ class Trainer:
     def save_state(self, folder):
         # save random state
         write_pickle(get_random_state(),
-                     os.path.join(folder, 'random_state.pkl')
+                     os.path.join(folder, 'random_state.pkl'))
         # save model state
         torch.save(self.model.state_dict(),
                    os.path.join(folder, 'model_state.tpkl'))
