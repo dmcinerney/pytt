@@ -6,9 +6,9 @@ class ProgressBar:
     def __init__(self):
         self.pbar = None
 
-    def enter(self, total):
+    def enter(self, *args, **kwargs):
         if log_bool():
-            self.pbar = self.init_pbar(total)
+            self.pbar = self.init_pbar(*args, **kwargs)
         logger.add_progress_bar(tqdm)
 
     def exit(self):
@@ -17,9 +17,9 @@ class ProgressBar:
             self.pbar = None
         logger.remove_progress_bar()
 
-    def update(self):
+    def update(self, n=1):
         if self.pbar is not None:
-            self.pbar.update()
+            self.pbar.update(n=n)
 
-    def init_pbar(self, total):
-        return tqdm(total=total, mininterval=1, leave=len(logger.pbars) == 0)
+    def init_pbar(self, *args, mininterval=1, leave=len(logger.pbars) == 0, **kwargs):
+        return tqdm(*args, mininterval=mininterval, leave=leave, **kwargs)

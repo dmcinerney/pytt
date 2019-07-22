@@ -120,8 +120,8 @@ def spawn_function():
 
 if __name__ == '__main__':
     seed_state()
-    nprocs = 2
-    distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
-    distributed_spawn_function()
+    #nprocs = 2
+    #distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
+    #distributed_spawn_function()
     # setup(0,1)
-    # spawn_function()
+    spawn_function()

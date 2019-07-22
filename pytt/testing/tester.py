@@ -16,13 +16,14 @@ class Tester:
         self.total_batch_info = 0
         self.print_every = print_every
 
-    def test(self, loss_func, statistics_func=None, use_pbar=True):
+    def test(self, loss_func=None, statistics_func=None, use_pbar=True):
         if use_pbar:
-            self.pbar.enter(len(self.batch_iterator.indices_iterator))
+            self.pbar.enter(total=len(self.batch_iterator.indices_iterator),
+                initial=self.batch_iterator.iterator_info().batches_seen)
         try:
             while True:
                 self.register_iteration(
-                    self.process_batch(next(self.batch_iterator), loss_func, statistics_func=statistics_func))
+                    self.process_batch(next(self.batch_iterator), loss_func=loss_func, statistics_func=statistics_func))
                 if self.batch_iterator.take_step():
                     self.pbar.update()
         except StopIteration:
@@ -30,16 +31,19 @@ class Tester:
                 self.pbar.exit()
         return self.total_batch_info
 
-    def process_batch(self, batch, loss_func, statistics_func=None):
+    def process_batch(self, batch, loss_func=None, statistics_func=None):
         with torch.autograd.no_grad():
             # run batch through the model
             outputs = self.model(**batch.get_observed())
             # calculate loss using the outputs of the model
-            loss = loss_func(**outputs, **batch.get_target())
+            if loss_func is not None:
+                loss = loss_func(**outputs, **batch.get_target())
             # if statistics function is given, calculate it
             if statistics_func is not None:
                 stats = statistics_func(**outputs, **batch.get_target())
-        step_dict = {"loss":loss, "_batch_length":torch.tensor(len(batch))}
+        step_dict = {"_batch_length":torch.tensor(len(batch))}
+        if loss_func is not None:
+            step_dict["loss"] = loss
         if statistics_func is not None:
             step_dict.update(stats)
         return step_dict

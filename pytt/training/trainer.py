@@ -51,7 +51,8 @@ class Trainer:
     def train(self, loss_func, statistics_func=None, grad_mod=None,
               iter_info_class=IterationInfo, use_pbar=True):
         if use_pbar:
-            self.pbar.enter(len(self.batch_iterator.indices_iterator))
+            self.pbar.enter(total=len(self.batch_iterator.indices_iterator),
+                initial=self.batch_iterator.iterator_info().batches_seen)
         try:
             while True:
                 iteration_info = iter_info_class()
@@ -164,7 +165,9 @@ class Trainer:
         write_pickle(get_random_state(),
                      os.path.join(folder, 'random_state.pkl'))
         # save model state
-        torch.save(self.model.state_dict(),
+        torch.save(self.model.state_dict()\
+                   if not isinstance(self.model, LDDP) else\
+                   self.model.module.state_dict(),
                    os.path.join(folder, 'model_state.tpkl'))
         # save optimizer state
         torch.save(self.optimizer.state_dict(),
