@@ -316,7 +316,7 @@ class Subbatches:
         base = "samples_in_subbatch: "+str(self.samples_in_subbatch)
         if self.sequential_subbatch_num is not None:
             base += ", sequential_subbatch_num: "\
-                    +str(self.sequential_subbatch_num)\
+                    +str(self.sequential_subbatch_num+1)\
                     +" of "\
                     +str(self.sequential_subbatches)
         if self.rank is not None:
