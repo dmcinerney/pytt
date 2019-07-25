@@ -99,14 +99,14 @@ class Trainer:
                                                  statistics_func=statistics_func,
                                                  enable_grad=True)
             iterator_info = self.batch_iterator.iterator_info()
-            if ((iterator_info.batches_seen + int(not self.batch_iterator.take_step()))
-                % self.print_every) == 0:
-                logger.log(indent(iterator_info.subbatch_str(),
-                                  "        "), verbosity=2)
             # calculate gradients
             self.calculate_grads(train_info_dict["loss"])
             train_info += self.batch_info_class(
                 {k:v.item() for k,v in train_info_dict.items()})
+            if ((iterator_info.batches_seen + int(not self.batch_iterator.take_step()))
+                % self.print_every) == 0:
+                logger.log(indent(iterator_info.subbatch_str(),
+                                  "        "), verbosity=2)
             if self.batch_iterator.take_step():
                 break
         # record training info
