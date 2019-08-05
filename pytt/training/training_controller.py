@@ -1,3 +1,4 @@
+# IMPORTANT: UNDER CONTRUCTION, CANNOT USE YET
 # trains model in sections, copying the checkpoint folder for each
 # loads raw dataset(s)
 # creates batcher using custom function
@@ -21,21 +22,18 @@ class AbstractTrainingController:
             os.mkdir(os.path.join(folder, 'checkpoint'))
         self.current_section = 0
 
-    def train(self):
+    def train(self, train_func):
         self.logger.log("Static Parameters: "+str(self.static_parameters))
         while self.current_section < len(sections):
             dynamic_parameters = self.sections[self.current_section]
             self.log_section(self.current_section, dynamic_parameters)
-            self.train_section({**self.static_parameters, **dynamic_parameters})
+            train_func({**self.static_parameters, **dynamic_parameters})
             self.save_section(self.current_section)
             self.current_section += 1
 
     def log_section(self, i, dynamic_parameters):
         logger.log("Section %i" % i)
         logger.log("\tDynamic"+str(dynamic_parameters))
-
-    def train_section(self, parameters):
-        raise NotImplementedError
 
     def save_section(self, i):
         main_folder = os.path.join(self.folder, 'checkpoint')

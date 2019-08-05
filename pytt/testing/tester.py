@@ -7,7 +7,13 @@ from pytt.utils import indent
 from pytt.progress_bar import ProgressBar
 
 class Tester:
-    def __init__(self, model, batch_iterator, batch_info_class=BatchInfo, pbar=None, print_every=1):
+    """
+    Tester object containing model and a batch_iterator. It can use a custom
+    batch info class and progress_bar class, and the frequency of printing can
+    be controlled.
+    """
+    def __init__(self, model, batch_iterator, batch_info_class=BatchInfo,
+                 pbar=None, print_every=1):
         self.model = model
         self.batch_iterator = batch_iterator
         self.pbar = pbar if pbar is not None else ProgressBar()
@@ -16,14 +22,25 @@ class Tester:
         self.total_batch_info = 0
         self.print_every = print_every
 
-    def test(self, loss_func=None, statistics_func=None, use_pbar=True):
+    def test(self, test_func, use_pbar=True):
+        """
+        Tests the model by calling next on the batch_iterator until it throws a
+        StopIteration Exception.  It uses a test_func to process the output of
+        the model and return any relevant batch statistics to accumulate
+        throughout testing. The user should use this function to do any writing
+        of individual instance outputs to disk. The function should only return
+        a dictionary of floats and not any other data type. Statistics returned
+        by the test_func will be accumulated in self.total_batch_info as a
+        batch_info object. The running statistics will also be logged. The
+        progress bar is used unless use_pbar is specified False.
+        """
         if use_pbar:
             self.pbar.enter(total=len(self.batch_iterator.indices_iterator),
                 initial=self.batch_iterator.iterator_info().batches_seen)
         try:
             while True:
                 self.register_iteration(
-                    self.process_batch(next(self.batch_iterator), loss_func=loss_func, statistics_func=statistics_func))
+                    self.process_batch(next(self.batch_iterator), test_func))
                 if self.batch_iterator.take_step():
                     self.pbar.update()
         except StopIteration:
@@ -31,22 +48,14 @@ class Tester:
                 self.pbar.exit()
         return self.total_batch_info
 
-    def process_batch(self, batch, loss_func=None, statistics_func=None):
+    def process_batch(self, batch, test_func):
+        # disable gradients
         with torch.autograd.no_grad():
             # run batch through the model
             outputs = self.model(**batch.get_observed())
-            # calculate loss using the outputs of the model
-            if loss_func is not None:
-                loss = loss_func(**outputs, **batch.get_target())
-            # if statistics function is given, calculate it
-            if statistics_func is not None:
-                stats = statistics_func(**outputs, **batch.get_target())
-        step_dict = {"_batch_length":torch.tensor(len(batch))}
-        if loss_func is not None:
-            step_dict["loss"] = loss
-        if statistics_func is not None:
-            step_dict.update(stats)
-        return step_dict
+            # run the test function on the outputs and batch targets
+            stats = test_func(**outputs, **batch.get_target())
+        return {**stats, "_batch_length":torch.tensor(len(batch))}
 
     def register_iteration(self, batch_info):
         self.current_batch_info += self.batch_info_class({
@@ -58,7 +67,8 @@ class Tester:
                     self.current_batch_info = sum(collected)
             if log_bool():
                 self.total_batch_info += self.current_batch_info
-                if self.batch_iterator.iterator_info().batches_seen % self.print_every == 0:
+                if self.batch_iterator.iterator_info().batches_seen\
+                   % self.print_every == 0:
                     logger.log(self.get_log_string())
             self.current_batch_info = 0
 

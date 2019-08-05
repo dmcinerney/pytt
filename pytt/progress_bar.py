@@ -21,5 +21,6 @@ class ProgressBar:
         if self.pbar is not None:
             self.pbar.update(n=n)
 
-    def init_pbar(self, *args, mininterval=1, leave=len(logger.pbars) == 0, **kwargs):
+    def init_pbar(self, *args, mininterval=1, leave=len(logger.pbars) == 0,
+                  **kwargs):
         return tqdm(*args, mininterval=mininterval, leave=leave, **kwargs)

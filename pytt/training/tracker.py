@@ -3,6 +3,13 @@ from pytt.utils import read_pickle, write_pickle
 from pytt.distributed import collect_obj_on_rank0
 
 class Tracker:
+    """
+    Tracker object that creates a list (history) where each element is the info
+    from one training iteration, handling info objects distributed across
+    multiple devices.  Contains saving and loading functionality for use during
+    checkpoint.  Also contains a string function which can be used for logging
+    an iteration during training.
+    """
     @classmethod
     def load(cls, filename):
         return cls(read_pickle(filename))
