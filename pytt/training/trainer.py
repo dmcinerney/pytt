@@ -1,8 +1,11 @@
 import os
 import torch
 import torch.distributed as dist
-from fairseq.legacy_distributed_data_parallel\
-    import LegacyDistributedDataParallel as LDDP
+try:
+    from fairseq.legacy_distributed_data_parallel\
+        import LegacyDistributedDataParallel as LDDP
+except ImportError:
+    LDDP = type(None)
 from pytt.distributed import log_bool
 from pytt.logger import logger
 from pytt.iteration_info import IterationInfo
@@ -23,6 +26,8 @@ class Trainer:
                  tracker=Tracker(), checkpoint_folder=None,
                  batch_info_class=BatchInfo, val_every=1,
                  checkpoint_every=1, print_every=1, pbar=None):
+        if dist.is_initialized() and LDDP is None:
+            raise Exception
         self.model = model
         if dist.is_initialized() and not isinstance(self.model, LDDP):
             raise Exception

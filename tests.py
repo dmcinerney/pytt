@@ -26,7 +26,7 @@ from torch import nn
 from pytt.utils import get_random_state, seed_state
 from pytt.distributed import distributed_wrapper, setup, log_bool
 from torch.nn.parallel import DistributedDataParallel as DDP
-from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
+#from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
 from torch.optim import Adam
 from pytt.training.trainer import Trainer
 from pytt.logger import logger
