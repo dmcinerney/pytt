@@ -60,3 +60,6 @@ class Tokenizer:
         self.id2token
         """
         return (self.id2token(i) for i in tensor)
+
+    def __len__(self):
+        return len(self._token2id)

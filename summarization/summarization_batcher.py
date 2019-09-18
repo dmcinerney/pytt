@@ -20,8 +20,8 @@ class TestSummarizationBatcher(SummarizationBatcher):
 
 class AbstractSummarizationInstance(AbstractInstance):
     def __init__(self, raw_datapoint, tokenizer):
-        text, oov_token2id = tokenizer.tokens2tensor(raw_datapoint['text'])
-        summary, _ = tokenizer.tokens2tensor(raw_datapoint['summary'],
+        text, oov_token2id = tokenizer.tokens2tensor(["<start>"]+raw_datapoint['text']+["<end>"])
+        summary, _ = tokenizer.tokens2tensor(["<start>"]+raw_datapoint['summary']+["<end>"],
                                              oov_token2id=oov_token2id)
         self.datapoint = {"raw_datapoint":raw_datapoint,
                           "oov_token2id":oov_token2id}

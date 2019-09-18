@@ -5,8 +5,9 @@ from pytt.distributed import collect_obj_on_rank0, log_bool
 from pytt.iteration_info import BatchInfo
 from pytt.utils import indent
 from pytt.progress_bar import ProgressBar
+from pytt.testing.datapoint_processor import DatapointProcessor
 
-class Tester:
+class Tester(DatapointProcessor):
     """
     Tester object containing model and a batch_iterator. It can use a custom
     batch info class and progress_bar class, and the frequency of printing can
@@ -47,15 +48,6 @@ class Tester:
             if use_pbar:
                 self.pbar.exit()
         return self.total_batch_info
-
-    def process_batch(self, batch, test_func):
-        # disable gradients
-        with torch.autograd.no_grad():
-            # run batch through the model
-            outputs = self.model(**batch.get_observed())
-            # run the test function on the outputs and batch targets
-            stats = test_func(**outputs, **batch.get_target())
-        return {**stats, "_batch_length":torch.tensor(len(batch))}
 
     def register_iteration(self, batch_info):
         self.current_batch_info += self.batch_info_class({
