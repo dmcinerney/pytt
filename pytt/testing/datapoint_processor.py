@@ -13,5 +13,5 @@ class DatapointProcessor:
             # run batch through the model
             outputs = self.model(**batch.get_observed())
             # run the test function on the outputs and batch targets
-            stats = test_func(**outputs, **batch.get_target())
-        return {**stats, "_batch_length":torch.tensor(len(batch))}
+            result, stats = test_func(**outputs, **batch.get_target())
+        return result, {**stats, "_batch_length":torch.tensor(len(batch))}

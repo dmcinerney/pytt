@@ -14,7 +14,7 @@ class Tester(DatapointProcessor):
     be controlled.
     """
     def __init__(self, model, batch_iterator, batch_info_class=BatchInfo,
-                 pbar=None, print_every=1):
+                 pbar=None, print_every=1, store_results=False):
         self.model = model
         self.batch_iterator = batch_iterator
         self.pbar = pbar if pbar is not None else ProgressBar()
@@ -22,6 +22,7 @@ class Tester(DatapointProcessor):
         self.current_batch_info = 0
         self.total_batch_info = 0
         self.print_every = print_every
+        self.results = [] if store_results else None
 
     def test(self, test_func, use_pbar=True):
         """
@@ -40,8 +41,11 @@ class Tester(DatapointProcessor):
                 initial=self.batch_iterator.iterator_info().batches_seen)
         try:
             while True:
-                self.register_iteration(
-                    self.process_batch(next(self.batch_iterator), test_func))
+                result, stats = self.process_batch(
+                    next(self.batch_iterator), test_func)
+                if self.results is not None:
+                    self.results.append(result)
+                self.register_iteration(stats)
                 if self.batch_iterator.take_step():
                     self.pbar.update()
         except StopIteration:
