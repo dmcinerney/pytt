@@ -96,6 +96,7 @@ class Trainer:
            and (iteration_info.iterator_info.batches_seen
                 % self.checkpoint_every) == 0\
            and log_bool():
+            logger.log("saving checkpoint to "+self.checkpoint_folder)
             self.save_state(self.checkpoint_folder)
         # update progress bar
         self.pbar.update()
