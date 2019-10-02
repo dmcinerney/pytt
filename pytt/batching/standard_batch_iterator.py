@@ -169,7 +169,7 @@ class SubbatchIndicesIterator:
     process at each next call.  It also allows for batches to be split
     sequentially with delayed updates inside each process.
 
-    NOTE: an error will be thrown if there are more subbatches than instances
+    NOTE: an error will be thrown if there are more gpus than instances
       IMPORTANT: this can happen on the last batch because it is generally
         smaller
       TODO: fix this!
@@ -211,17 +211,19 @@ class SubbatchIndicesIterator:
             total_batches=info.total_batches,
             samples_seen=info.samples_seen,
             subbatches=copy.deepcopy(self.subbatches),
-            epochs_seen=info.epochs_seen
+            epochs_seen=info.epochs_seen,
+            total_epochs=info.total_epochs
         )
 
 
 # TODO: add comments
 class SubbatchIteratorInfo(StandardIteratorInfo):
     def __init__(self, batches_seen, total_batches, samples_seen, subbatches,
-                 epochs_seen=None):
+                 epochs_seen=None, total_epochs=None):
         super(SubbatchIteratorInfo, self).__init__(batches_seen, total_batches,
                                                    samples_seen,
-                                                   epochs_seen=epochs_seen)
+                                                   epochs_seen=epochs_seen,
+                                                   total_epochs=total_epochs)
         self.subbatches = subbatches
 
     def __str__(self):

@@ -130,9 +130,14 @@ class RandomIndicesIterator(AbstractIndicesIterator):
                    +batches_to_go_in_future_epochs
 
     def iterator_info(self):
-        return StandardIteratorInfo(self.batches_seen, len(self),
-                                    self.samples_seen,
-                                    epochs_seen=self.epochs_seen)
+        return StandardIteratorInfo(
+            self.batches_seen, len(self), self.samples_seen,
+            epochs_seen=self.epochs_seen,
+            total_epochs=self.num_epochs
+                if isinstance(self.num_epochs, int)
+                   and not isinstance(self.num_epochs, bool)
+                else None
+        )
 
     def set_batch_iter(self, batch_size):
         """
@@ -201,15 +206,21 @@ class BatchSampleIterator:
 
 class StandardIteratorInfo(IteratorInfo):
     def __init__(self, batches_seen, total_batches, samples_seen,
-                 epochs_seen=None):
+                 epochs_seen=None, total_epochs=None):
         super(StandardIteratorInfo, self).__init__(batches_seen, samples_seen)
         self.total_batches = total_batches
         self.epochs_seen = epochs_seen
+        self.total_epochs = total_epochs
+        if self.total_epochs is not None and self.epochs_seen is None:
+            raise Exception
 
     def __str__(self):
-        base = "batches_seen: "+str(self.batches_seen)\
-             + " of "+str(self.total_batches)\
-             + ", samples_seen: "+str(self.samples_seen)
+        base = "batches_seen: %i of %i, samples_seen: %i"\
+               % (self.batches_seen, self.total_batches,
+                  self.samples_seen)
         if self.epochs_seen is not None:
-            base = "epochs_seen: "+str(self.epochs_seen)+", "+base
+            epochs_seen_string = "epochs_seen: %i" % self.epochs_seen
+            if self.total_epochs is not None:
+                epochs_seen_string += " of %i" % self.total_epochs
+            base = epochs_seen_string + ", " + base
         return base
