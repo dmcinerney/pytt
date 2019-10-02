@@ -60,12 +60,12 @@ def spawn_function():
     tokenizer = Tokenizer(load_vocab('/home/jered/Documents/data/cnn_dataset/vocab', 50000))
     batcher = TrainSummarizationBatcher(tokenizer)
     val_batcher = TestSummarizationBatcher(tokenizer)
-    val_dataset = SummarizationDataset('/home/jered/Documents/data/cnn_dataset/val_processed.data')
-    train_dataset = SummarizationDataset('/home/jered/Documents/data/cnn_dataset/val_processed.data')
+    val_dataset = SummarizationDataset('/home/jered/Documents/data/cnn_dataset/preprocessed/val_processed.data')
+    train_dataset = SummarizationDataset('/home/jered/Documents/data/cnn_dataset/preprocessed/val_processed.data')
     batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=None)
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15, random=True, iterations=len(batch_iterator.indices_iterator)), subbatches=None)
     optimizer = Adam([p for p in model.parameters()])
-    trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, print_every=10)
+    trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, print_every=10, checkpoint_folder='test', checkpoint_every=7)
     logger.set_verbosity(1)
     trainer.train(loss_func, statistics_func=error_func) #, use_pbar=False)
     if log_bool():
@@ -73,7 +73,7 @@ def spawn_function():
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=None)
     tester = Tester(model, val_iterator)
     def test_func(**kwargs):
-        return {"loss":loss_func(**kwargs), **error_func(**kwargs)}
+        return None, {"loss":loss_func(**kwargs), **error_func(**kwargs)}
     tester.test(test_func)
 # def spawn_function():
 #     setup = Setup(Model)

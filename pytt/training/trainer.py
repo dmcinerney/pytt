@@ -87,19 +87,25 @@ class Trainer:
         # register iteration info with the tracker
         self.tracker.register_iteration(iteration_info)
         # print tracker info
-        if (iteration_info.iterator_info.batches_seen
-            % self.print_every) == 0\
+        if self.recurring_bool(iteration_info, self.print_every)\
            and log_bool():
             logger.log(str(self.tracker))
         # save state to file
         if self.checkpoint_folder is not None\
-           and (iteration_info.iterator_info.batches_seen
-                % self.checkpoint_every) == 0\
+           and self.recurring_bool(iteration_info, self.checkpoint_every)\
            and log_bool():
-            logger.log("saving checkpoint to "+self.checkpoint_folder)
+            logger.log("saving checkpoint to %s, batches_seen: %i" %
+                       (self.checkpoint_folder,
+                        iteration_info.iterator_info.batches_seen))
             self.save_state(self.checkpoint_folder)
         # update progress bar
         self.pbar.update()
+
+    def recurring_bool(self, iteration_info, every):
+        return (iteration_info.iterator_info.batches_seen
+                % every) == 0\
+               or (iteration_info.iterator_info.batches_seen
+                   == iteration_info.iterator_info.total_batches)
 
     def iteration_trainstep(self, iteration_info, loss_func,
                             statistics_func=None, grad_mod=None):
