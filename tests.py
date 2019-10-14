@@ -73,7 +73,8 @@ def spawn_function():
         logger.log("\n\nTESTING")
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=None)
     tester = Tester(model, val_iterator)
-    def test_func(**kwargs):
+    def test_func(batch, outputs):
+        kwargs = {**outputs, **batch.get_target()}
         return None, {"loss":loss_func(**kwargs), **error_func(**kwargs)}
     tester.test(test_func)
 # def spawn_function():

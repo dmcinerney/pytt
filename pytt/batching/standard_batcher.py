@@ -62,17 +62,15 @@ class StandardBatcher(AbstractBatcher):
 
 class StandardInstance(AbstractInstance):
     """
-    Implementation of an AbstractInstance that does no processing 
+    Implementation of an AbstractInstance that does no processing
 
     All functions without comments are described in the superclass.
     """
     def __init__(self, raw_datapoint, device=None):
-        self.datapoint = raw_datapoint
-        self.tensors = {k:torch.tensor(v).to(device=device)
-                        for k,v in raw_datapoint.items()}
-        self.observed_keys = self.tensors.keys()
-        self.target_keys = self.tensors.keys()
-
+        self.raw_datapoint = raw_datapoint
+        self.datapoint = {k:torch.tensor(v).to(device=device)
+                          for k,v in raw_datapoint.items()}
+        self.observed = self.datapoint.keys()
 
 class StandardBatch(AbstractBatch):
     """
@@ -80,19 +78,13 @@ class StandardBatch(AbstractBatch):
 
     All functions without comments are described in the superclass.
     """
-    def __init__(self, instances):
-        self.datapoints = [instance.datapoint for instance in instances]
-        self.tensors = {k:pad_and_concat([instance.tensors[k]
-                                          for instance in instances])
-                        for k in instances[0].tensors.keys()}
-        self.observed_keys = instances[0].observed_keys
-        self.target_keys = instances[0].target_keys
-
-    def get_observed(self):
-        return {k:self.tensors[k] for k in self.observed_keys}
-
-    def get_target(self):
-        return {k:self.tensors[k] for k in self.target_keys}
+    def collate_datapoints(datapoints):
+        return {
+           k:
+             pad_and_concat([datapoint[k] for datapoint in datapoints])
+             if isinstance(datapoints[0][k], torch.Tensor) else
+             [datapoint[k] for datapoint in datapoints]
+           for k in datapoints[0].keys()}
 
 
 # TODO: figure out if something can be done for the output batch and output

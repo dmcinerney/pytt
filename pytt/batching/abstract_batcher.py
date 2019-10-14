@@ -1,4 +1,5 @@
 import pickle as pkl
+import torch
 from torch.utils.data import Sampler
 from pytt.utils import split, read_pickle, write_pickle
 
@@ -136,7 +137,7 @@ class IteratorInfo:
     Contains any necessary info concerning the current state of the iterator
     """
     def __init__(self, batches_seen, samples_seen):
-        self.batches_seen = batches_seen 
+        self.batches_seen = batches_seen
         self.samples_seen = samples_seen
 
     def __str__(self):
@@ -160,19 +161,30 @@ class AbstractInstance:
         inputs:
             1) raw datapoint
 
-        IMPORTANT NOTE: this needs to create two object attributes:
-            1) self.datapoint - a reference to the raw datapoint and any other
-                information that it is necessary to keep around
-            2) self.tensors - a processed dictionary of tensors
+        IMPORTANT NOTE: this needs to create three object attributes:
+            1) self.raw_datapoint - a reference to the raw datapoint
+            2) self.datapoint - a processed dictionary of anything needed at the
+                batch level
+            3) self.observed - a subset of keys of the self.datapoint object
+                specifying what should be observed by the model (the rest are
+                assumed to be unobserved but needed during post-processing)
         """
         raise NotImplementedError
+
+    def keep_in_batch(self):
+        """
+        Returns an object containing anything that might be needed on the batch
+        level (defaults to returning None)
+        """
+        return None
 
     def to(self, device):
         """
         Moves Instance input tensors to the specified device
         """
-        for k,v in self.tensors.items():
-            self.tensors[k] = v.to(device=device)
+        for k,v in self.datapoint.items():
+            if isinstance(v, torch.Tensor):
+                self.datapoint[k] = v.to(device=device)
         return self
 
 
@@ -200,45 +212,59 @@ class AbstractBatch:
             offset += batch_size
         return batches
 
+    @staticmethod
+    def collate_datapoints(datapoints):
+        """
+        Returns a dictionary that is the collated version of the list of datapoints
+        given
+        """
+        raise NotImplementedError
+
     def __init__(self, instances):
         """
         Initializes the batch object using a list of instance objects
 
         inputs:
-            1) list of instances
+            1) a list of instances
 
         IMPORTANT NOTE: this needs to create two object attributes:
-            1) self.datapoints - a reference to the raw datapoints and any other
-                information that it is necessary to keep around
-            2) self.tensors - a processed dictionary of tensors which should
-                consist of both the unsupervised data and labels
+            1) self.instances - a list of references to the objects for each
+                instance output from instance.keep_in_batch()
+            1) self.collated_datapoints - a dictionary that is the collated
+                version of self.datapoints
+            2) self.observed - same as in instance
         """
-        raise NotImplementedError
+        self.instances = [instance.keep_in_batch() for instance in instances]
+        self.collated_datapoints = self.__class__.collate_datapoints(
+            [instance.datapoint for instance in instances])
+        self.observed = instances[0].observed
 
     def __len__(self):
         """
         Returns the number of datapoints in the batch
         """
-        return len(self.datapoints)
+        return len(self.instances)
 
-    def get_observed():
+    def get_observed(self):
         """
-        Return the tensors needed for the forward pass of the model
+        Return the objects needed for the forward pass of the model
         """
-        raise NotImplementedError
+        return {k:self.collated_datapoints[k] for k in self.observed}
 
-    def get_target():
+    def get_target(self):
         """
-        Return the tensors needed for the loss and statistics computations
+        Return the objects needed for the loss and statistics functions
         """
-        raise NotImplementedError
+        return {k:self.collated_datapoints[k]
+            for k in self.collated_datapoints.keys() if k not in self.observed}
 
     def to(self, device):
         """
         Moves the batch to the specified device
         """
-        for k,v in self.tensors.items():
-            self.tensors[k] = v.to(device=device)
+        for k,v in self.collated_datapoints.items():
+            if isinstance(v, torch.Tensor):
+                self.collated_datapoints[k] = v.to(device=device)
         return self
 
 
