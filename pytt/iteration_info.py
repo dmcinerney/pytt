@@ -23,6 +23,13 @@ class IterationInfo:
     def set_val_info(self, batch_info):
         self.val_info = batch_info
 
+    def write_to_tensorboard(self, writer):
+        if not self.check_initialized():
+            raise Exception
+        self.train_info.write_to_tensorboard(writer, self.iterator_info, prefix='train/')
+        if self.val_info is not None:
+            self.val_info.write_to_tensorboard(writer, self.iterator_info, prefix='val/')
+
     def __add__(self, iteration_info):
         if not (self.check_initialized()
                 and iteration_info.check_initialized()):
@@ -79,6 +86,13 @@ class IterationInfo:
 class BatchInfo:
     def __init__(self, batch_info_dict):
         self.batch_info_dict = batch_info_dict
+
+    def write_to_tensorboard(self, writer, iterator_info, prefix=''):
+        global_step = iterator_info.batches_seen
+        batch_length = self.batch_info_dict['_batch_length']
+        for k,v in self.batch_info_dict.items():
+            if k != '_batch_length':
+                writer.add_scalar(prefix+k, v/batch_length, global_step)
 
     def __add__(self, batch_info):
         new_batch_info_dict = {}

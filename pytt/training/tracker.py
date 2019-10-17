@@ -1,4 +1,5 @@
 import torch.distributed as dist
+from torch.utils.tensorboard import SummaryWriter
 from pytt.utils import read_pickle, write_pickle
 from pytt.distributed import collect_obj_on_rank0
 
@@ -16,6 +17,7 @@ class Tracker:
 
     def __init__(self, history=[]):
         self.history = history
+        self.writer = SummaryWriter()
 
     def register_iteration(self, iteration_info):
         self.history.append(iteration_info)
@@ -27,6 +29,7 @@ class Tracker:
                 self.history[-1] = sum(collected)
             else:
                 self.history = []
+        self.history[-1].write_to_tensorboard(self.writer)
 
     def __str__(self):
         return str(self.history[-1])
