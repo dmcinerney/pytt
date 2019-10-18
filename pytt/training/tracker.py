@@ -75,8 +75,6 @@ class Tracker:
     def save(self, filename):
         for writer in self.summary_writers.values():
             writer.flush()
-            # TODO: make sure this is doing something
-            writer.purge_step = self.get_latest_step() + 1
         write_pickle(self.history, filename)
 
 class ModelWrapper(nn.Module):

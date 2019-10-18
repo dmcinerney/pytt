@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from pytt.logger import logger
-from pytt.utils import indent, IndexIter
+from pytt.utils import indent, IndexIter, pad_and_concat
 
 
 # TODO: add comments
@@ -111,9 +111,11 @@ class BatchInfo:
             new_batch_outputs = {}
             for k in set(self.batch_outputs.keys()).union(
                          batch_info.batch_outputs.keys()):
-                new_batch_outputs[k] = torch.cat(
-                    (self.batch_outputs[k],
-                     batch_info.batch_outputs[k]), 0)
+                new_batch_outputs[k] = pad_and_concat(
+                    [self.batch_outputs[k],
+                     batch_info.batch_outputs[k]])
+                new_batch_outputs[k] = new_batch_outputs[k].view(
+                    -1, *new_batch_outputs[k].shape[2:])
                 new_batch_outputs[k] =\
                     new_batch_outputs[k][-self.max_num_instance_outputs:]
         else:
