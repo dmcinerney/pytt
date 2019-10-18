@@ -26,7 +26,7 @@ from torch import nn
 from pytt.utils import get_random_state, seed_state
 from pytt.distributed import distributed_wrapper, setup, log_bool
 from torch.nn.parallel import DistributedDataParallel as DDP
-#from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
+from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
 from torch.optim import Adam
 from pytt.training.trainer import Trainer
 from pytt.logger import logger
@@ -43,7 +43,9 @@ class Model(nn.Module):
         text = text.to(next(iter(self.p.parameters())).device)
 #         print("forward")
         # print(self.p.weight)
-        return dict(output=self.p(text[:, :1].float()))
+        output = self.p(text[:, :1].float())
+        output = output + torch.randn_like(output)/3
+        return dict(output=output)
 
 def loss_func(output):
     return output.sum()
@@ -67,7 +69,7 @@ def spawn_function():
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15, random=True, iterations=len(batch_iterator.indices_iterator)), subbatches=None)
     optimizer = Adam([p for p in model.parameters()])
     trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, print_every=10, checkpoint_folder='test', checkpoint_every=7)
-    logger.set_verbosity(1)
+    logger.set_verbosity(2)
     trainer.train(loss_func, statistics_func=error_func) #, use_pbar=False)
     if log_bool():
         logger.log("\n\nTESTING")
@@ -124,8 +126,8 @@ def spawn_function():
 
 if __name__ == '__main__':
     seed_state()
-    #nprocs = 2
-    #distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
-    #distributed_spawn_function()
-    # setup(0,1)
-    spawn_function()
+    nprocs = 2
+    distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
+    distributed_spawn_function()
+    #setup(0,1)
+    #spawn_function()

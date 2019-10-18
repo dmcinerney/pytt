@@ -23,9 +23,10 @@ class Trainer:
     checkpointing, and printing can be controlled.
     """
     def __init__(self, model, optimizer, train_iterator, val_iterator=None,
-                 tracker=Tracker(), checkpoint_folder=None,
+                 tracker=None, checkpoint_folder=None,
                  batch_info_class=BatchInfo, val_every=1,
-                 checkpoint_every=1, print_every=1, pbar=None):
+                 checkpoint_every=1, print_every=1, pbar=None,
+                 keep_subbatch_outputs=True):
         if dist.is_initialized() and LDDP is None:
             raise Exception
         self.model = model
@@ -35,12 +36,13 @@ class Trainer:
         self.train_iterator = train_iterator
         self.pbar = pbar if pbar is not None else ProgressBar()
         self.val_iterator = val_iterator
-        self.tracker = tracker
+        self.tracker = Tracker(checkpoint_folder=checkpoint_folder)
         self.checkpoint_folder = checkpoint_folder
         self.batch_info_class = batch_info_class
         self.val_every = val_every
         self.checkpoint_every = checkpoint_every
         self.print_every = print_every
+        self.keep_subbatch_outputs = keep_subbatch_outputs
 
     def train(self, loss_func, statistics_func=None, grad_mod=None,
               iter_info_class=IterationInfo, use_pbar=True):
@@ -69,6 +71,7 @@ class Trainer:
         except StopIteration:
             if use_pbar:
                 self.pbar.exit()
+            self.tracker.close()
 
     def iteration(self, iteration_info, loss_func, statistics_func=None,
                   grad_mod=None):
@@ -113,15 +116,20 @@ class Trainer:
         # iterate through all the subbatches in a batch, accumulating gradients
         while True:
             # process training subbatch
-            train_info_dict = self.process_batch(next(self.train_iterator),
+            train_stats, train_outputs = self.process_batch(next(self.train_iterator),
                 loss_func, statistics_func=statistics_func, enable_grad=True)
             # get iterator_info from iterator
             iterator_info = self.train_iterator.iterator_info()
             # calculate and accumulate gradients
-            self.calculate_grads(train_info_dict["loss"])
+            self.calculate_grads(train_stats["loss"])
             # accumulate batch info
             train_info += self.batch_info_class(
-                {k:v.item() for k,v in train_info_dict.items()})
+                {k:v.item() for k,v in train_stats.items()},
+                batch_outputs={k:v.detach()
+                               for k,v in train_outputs.items()},
+                max_num_instance_outputs=
+                    iterator_info.subbatches.samples_in_fullbatch
+                    if train_outputs is not None else None)
             # log subbatch info
             if ((iterator_info.batches_seen
                  + int(not self.train_iterator.take_step()))
@@ -136,7 +144,8 @@ class Trainer:
         # take a gradient step, with loss summed over all subbatches on all
         # devices, dividing by the number of instances
         self.step(grad_mod=grad_mod,
-                  denominator=train_info.batch_info_dict["_batch_length"])
+                  denominator=train_info.batch_stats["_batch_length"])
+
 
     def iteration_valstep(self, iteration_info, loss_func,
                           statistics_func=None):
@@ -144,21 +153,28 @@ class Trainer:
         # iterate through all the subbatches in a batch
         while True:
             # process subbatch and accumulate validation info
+            val_stats, val_outputs = self.process_batch(
+                next(self.val_iterator), loss_func,
+                statistics_func=statistics_func, enable_grad=False)
+            iterator_info = self.val_iterator.iterator_info()
             val_info += self.batch_info_class({
-                k:v.item() for k,v in\
-                self.process_batch(next(self.val_iterator), loss_func,
-                                   statistics_func=statistics_func,
-                                   enable_grad=False).items()})
+                k:v.item() for k,v in val_stats.items()},
+                batch_outputs={k:v.detach()
+                               for k,v in val_outputs.items()},
+                max_num_instance_outputs=
+                    iterator_info.subbatches.samples_in_fullbatch
+                    if val_outputs is not None else None)
 
             # end loop if the iterator says to take a step
             if self.val_iterator.take_step():
                 break
-
         # record validation info
         iteration_info.set_val_info(val_info)
 
     def process_batch(self, batch, loss_func, statistics_func=None,
                       enable_grad=True):
+        if self.tracker.needs_graph:
+            self.tracker.add_graph(self.model, batch)
         # enable or disable gradients
         with torch.set_grad_enabled(enable_grad):
             # run batch through the model
@@ -175,7 +191,9 @@ class Trainer:
         # includes statistics in the return_dict
         if statistics_func is not None:
             return_dict.update(stats)
-        return return_dict
+        if not self.keep_subbatch_outputs:
+            outputs = None
+        return return_dict, outputs
 
     def calculate_grads(self, loss):
         # if the model is distributed (a fairseq Legacy Distributed Data

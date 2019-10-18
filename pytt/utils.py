@@ -140,3 +140,23 @@ def pad_and_concat(tensors, max_size=None, auto=True):
 
 def indent(string, indentation):
     return indentation+string.replace("\n", "\n"+indentation)
+
+class IndexIter:
+    def __init__(self, start, end):
+        self.set_offset(start)
+        self.end = end
+
+    def set_offset(self, offset):
+        self.offset = offset
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.offset >= self.end:
+            raise StopIteration
+        self.offset += 1
+        return self.offset - 1
+
+    def peek(self):
+        return self.offset

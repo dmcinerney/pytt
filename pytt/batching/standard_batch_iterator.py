@@ -5,7 +5,7 @@ import torch.distributed as dist
 from torch.utils.data import Dataset, DataLoader
 from pytt.batching.abstract_batcher import AbstractBatchIterator
 from pytt.batching.indices_iterator import StandardIteratorInfo
-from pytt.utils import split_range
+from pytt.utils import split_range, IndexIter
 
 class StandardBatchIterator(AbstractBatchIterator):
     """
@@ -248,11 +248,9 @@ class SubbatchIteratorInfo(StandardIteratorInfo):
         return torch.cat((torch.tensor(numbers),
                           self.subbatches.to_tensor()), 0)
 
-    def from_tensor(self, tensor, isiter=False):
-        if not isiter:
-            tensor_iter = iter(tensor)
-        else:
-            tensor_iter = tensor
+    def from_tensor(self, tensor, index_iter=None):
+        if index_iter is None:
+            index_iter = IndexIter(0,tensor.size(0))
         for name in [
             'batches_seen',
             'total_batches',
@@ -260,8 +258,8 @@ class SubbatchIteratorInfo(StandardIteratorInfo):
             'epochs_seen',
         ]:
             if getattr(self, name) is not None:
-                setattr(self, name, int(next(tensor_iter).item()))
-        self.subbatches.from_tensor(tensor_iter, isiter=True)
+                setattr(self, name, int(tensor[next(index_iter)].item()))
+        self.subbatches.from_tensor(tensor, index_iter=index_iter)
         return self
 
 class Subbatches:
@@ -341,11 +339,9 @@ class Subbatches:
                 numbers.append(attr)
         return torch.tensor(numbers)
 
-    def from_tensor(self, tensor, isiter=False):
-        if not isiter:
-            tensor_iter = iter(tensor)
-        else:
-            tensor_iter = tensor
+    def from_tensor(self, tensor, index_iter=None):
+        if index_iter is None:
+            index_iter = IndexIter(0,tensor.size(0))
         for name in [
             'samples_in_subbatch',
             'samples_in_fullbatch',
@@ -356,5 +352,5 @@ class Subbatches:
             'sequential_subbatches'
         ]:
             if getattr(self, name) is not None:
-                setattr(self, name, int(next(tensor_iter).item()))
+                setattr(self, name, int(tensor[next(index_iter)].item()))
         return self
