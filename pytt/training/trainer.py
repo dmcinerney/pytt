@@ -36,9 +36,11 @@ class Trainer:
         self.train_iterator = train_iterator
         self.pbar = pbar if pbar is not None else ProgressBar()
         self.val_iterator = val_iterator
-        self.tracker = Tracker(checkpoint_folder=os.path.join(
-                                   checkpoint_folder, 'tensorboard'))\
-                       if tracker is None else tracker
+        self.tracker = Tracker(
+            checkpoint_folder=os.path.join(
+                checkpoint_folder, 'tensorboard'),
+            purge_step=self.train_iterator.iterator_info().batches_seen)\
+            if tracker is None else tracker
         self.checkpoint_folder = checkpoint_folder
         self.batch_info_class = batch_info_class
         self.val_every = val_every

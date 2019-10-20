@@ -15,7 +15,7 @@ class Tracker:
     checkpoint.  Also contains a string function which can be used for logging
     an iteration during training.
     """
-    def __init__(self, checkpoint_folder=None,
+    def __init__(self, checkpoint_folder=None, purge_step=None,
                  summary_writers=['train', 'val'], needs_graph=True):
         self.iteration_info = None
         if not log_bool():
@@ -27,15 +27,9 @@ class Tracker:
             checkpoint_folder = os.path.join('runs', datetime_machine)
         self.summary_writers = {k:
             SummaryWriter(log_dir=checkpoint_folder+'/'+k,
-                          purge_step=self.get_latest_step())
+                          purge_step=purge_step)
             for k in summary_writers}
         self.needs_graph = needs_graph
-
-    def get_latest_step(self):
-        if self.iteration_info is not None:
-            return self.iteration_info.iterator_info.batches_seen
-        else:
-            return 0
 
     def add_graph(self, model, batch):
         if not log_bool():
