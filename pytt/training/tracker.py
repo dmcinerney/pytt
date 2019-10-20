@@ -4,8 +4,6 @@ from torch.utils.tensorboard import SummaryWriter
 from torch import nn
 from pytt.utils import read_pickle, write_pickle
 from pytt.distributed import collect_obj_on_rank0, log_bool
-import socket
-from datetime import datetime
 
 class Tracker:
     """
@@ -21,11 +19,9 @@ class Tracker:
         if not log_bool():
             self.needs_graph = needs_graph
             return
-        if checkpoint_folder is None:
-            checkpoint_folder = datetime.now().strftime('%b%d_%H-%M-%S')\
-                                + '_' + socket.gethostname()
         self.summary_writers = {k:
-            SummaryWriter(log_dir=checkpoint_folder+'_'+k,
+            SummaryWriter(log_dir=checkpoint_folder+'/'+k
+                          if checkpoint_folder is not None else None,
                           purge_step=self.get_latest_step())
             for k in summary_writers}
         self.needs_graph = needs_graph
