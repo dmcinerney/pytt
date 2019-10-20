@@ -75,7 +75,8 @@ class Tracker:
     def save(self, filename):
         for writer in self.summary_writers.values():
             writer.flush()
-        write_pickle(self.history, filename)
+        # TODO: figure out if you should have a history at all
+        # write_pickle(self.history, filename)
 
 class ModelWrapper(nn.Module):
     def __init__(self, model, keys):
