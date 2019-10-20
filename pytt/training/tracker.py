@@ -15,19 +15,15 @@ class Tracker:
     checkpoint.  Also contains a string function which can be used for logging
     an iteration during training.
     """
-    @classmethod
-    def load(cls, filename, **kwargs):
-        return cls(read_pickle(filename), **kwargs)
-
-    def __init__(self, history=[], checkpoint_folder='runs',
+    def __init__(self, checkpoint_folder=None,
                  summary_writers=['train', 'val'], needs_graph=True):
-        self.history = history
+        self.iteration_info = None
         if not log_bool():
             self.needs_graph = needs_graph
             return
-        checkpoint_folder = os.path.join(checkpoint_folder,
-            datetime.now().strftime('%b%d_%H-%M-%S')
-            + '_' + socket.gethostname())
+        if checkpoint_folder is None:
+            checkpoint_folder = datetime.now().strftime('%b%d_%H-%M-%S')\
+                                + '_' + socket.gethostname()
         self.summary_writers = {k:
             SummaryWriter(log_dir=checkpoint_folder+'_'+k,
                           purge_step=self.get_latest_step())
@@ -35,8 +31,8 @@ class Tracker:
         self.needs_graph = needs_graph
 
     def get_latest_step(self):
-        if len(self.history) > 0:
-            return self.history[-1].iterator_info.batches_seen
+        if self.iteration_info is not None:
+            return self.iteration_info.iterator_info.batches_seen
         else:
             return 0
 
@@ -51,20 +47,20 @@ class Tracker:
         self.needs_graph = False
 
     def register_iteration(self, iteration_info):
-        self.history.append(iteration_info)
+        self.iteration_info = iteration_info
         if dist.is_initialized():
             collected = collect_obj_on_rank0(
-                self.history[-1],
-                ranks=self.history[-1].iterator_info.subbatches.get_ranks())
+                self.iteration_info,
+                ranks=self.iteration_info.iterator_info.subbatches.get_ranks())
             if collected is not None:
-                self.history[-1] = sum(collected)
+                self.iteration_info = sum(collected)
             else:
-                self.history = []
+                self.iteration_info = None
         if log_bool() and len(self.summary_writers) > 0:
-            self.history[-1].write_to_tensorboard(self.summary_writers)
+            self.iteration_info.write_to_tensorboard(self.summary_writers)
 
     def __str__(self):
-        return str(self.history[-1])
+        return str(self.iteration_info)
 
     def close(self):
         if not log_bool():
@@ -75,8 +71,6 @@ class Tracker:
     def save(self, filename):
         for writer in self.summary_writers.values():
             writer.flush()
-        # TODO: figure out if you should have a history at all
-        # write_pickle(self.history, filename)
 
 class ModelWrapper(nn.Module):
     def __init__(self, model, keys):
