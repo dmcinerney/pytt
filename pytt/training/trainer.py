@@ -167,9 +167,10 @@ class Trainer:
             outputs = self.model(**batch.get_observed())
             # calculate loss using the outputs of the model and the batch
             # targets
-            loss = loss_func(**outputs, **batch.get_target())
+            kwargs = {**outputs, **batch.get_target()}
+            loss = loss_func(**kwargs)
         # create batch_info object
-        return loss, self.batch_info_class(outputs, len(batch), loss=loss)
+        return loss, self.batch_info_class(kwargs, len(batch), loss=loss)
 
     def calculate_grads(self, loss):
         # if the model is distributed (a fairseq Legacy Distributed Data
