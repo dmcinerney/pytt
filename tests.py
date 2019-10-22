@@ -29,6 +29,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
 from torch.optim import Adam
 from pytt.training.trainer import Trainer
+from pytt.training.tracker import Tracker
 from pytt.logger import logger
 from pytt.training.training_controller import AbstractTrainingController
 from pytt.testing.tester import Tester
@@ -77,7 +78,8 @@ def spawn_function():
     batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=None)
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15, random=True, iterations=len(batch_iterator.indices_iterator)), subbatches=None)
     optimizer = Adam([p for p in model.parameters()])
-    trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, print_every=10, checkpoint_folder='test', checkpoint_every=7, batch_info_class=BatchInfo)
+    tracker = Tracker(print_every=10, checkpoint_folder='test', checkpoint_every=7)
+    trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, batch_info_class=BatchInfo)
     logger.set_verbosity(2)
     trainer.train(loss_func) #, use_pbar=False)
     if log_bool():

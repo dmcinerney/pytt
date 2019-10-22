@@ -1,5 +1,7 @@
+import os
 import torch
 import torch.distributed as dist
+from torch.utils.tensorboard import SummaryWriter
 from pytt.logger import logger
 from pytt.distributed import collect_obj_on_rank0, log_bool
 from pytt.iteration_info import BatchInfo
@@ -14,7 +16,8 @@ class Tester(DatapointProcessor):
     be controlled.
     """
     def __init__(self, model, batch_iterator, batch_info_class=BatchInfo,
-                 pbar=None, print_every=1, store_results=False):
+                 pbar=None, print_every=1, tensorboard_every=1,
+                 tensorboard_dir=None):
         self.model = model
         self.batch_iterator = batch_iterator
         self.pbar = pbar if pbar is not None else ProgressBar()
@@ -22,7 +25,8 @@ class Tester(DatapointProcessor):
         self.current_batch_info = 0
         self.total_batch_info = 0
         self.print_every = print_every
-        self.results = [] if store_results else None
+        self.tensorboard_every = tensorboard_every
+        self.writer = SummaryWriter(log_dir=tensorboard_dir)
 
     def test(self, use_pbar=True):
         """
@@ -43,8 +47,6 @@ class Tester(DatapointProcessor):
             while True:
                 batch_info = self.process_batch(
                     next(self.batch_iterator))
-                if self.results is not None:
-                    self.results.append(result)
                 self.register_iteration(batch_info)
                 if self.batch_iterator.take_step():
                     self.pbar.update()
@@ -65,6 +67,10 @@ class Tester(DatapointProcessor):
                 if self.batch_iterator.iterator_info().batches_seen\
                    % self.print_every == 0:
                     logger.log(self.get_log_string())
+                if self.batch_iterator.iterator_info().batches_seen\
+                   % self.tensorboard_every == 0:
+                    self.current_batch_info.write_to_tensorboard(
+                        self.writer, self.batch_iterator.iterator_info())
             self.current_batch_info = 0
 
     def get_log_string(self):

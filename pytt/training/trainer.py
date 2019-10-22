@@ -6,13 +6,11 @@ try:
         import LegacyDistributedDataParallel as LDDP
 except ImportError:
     LDDP = type(None)
-from pytt.distributed import log_bool
 from pytt.logger import logger
 from pytt.iteration_info import IterationInfo
 from pytt.training.tracker import Tracker
 from pytt.iteration_info import BatchInfo
 from pytt.utils import MultiBatchGradMod, indent, write_pickle, get_random_state
-from pytt.progress_bar import ProgressBar
 
 class Trainer:
     """
@@ -23,10 +21,7 @@ class Trainer:
     checkpointing, and printing can be controlled.
     """
     def __init__(self, model, optimizer, train_iterator, val_iterator=None,
-                 tracker=None, checkpoint_folder=None,
-                 batch_info_class=BatchInfo, val_every=1,
-                 checkpoint_every=1, print_every=1, pbar=None,
-                 keep_subbatch_outputs=True):
+                 tracker=None, batch_info_class=BatchInfo, val_every=1):
         if dist.is_initialized() and LDDP is None:
             raise Exception
         self.model = model
@@ -34,22 +29,14 @@ class Trainer:
             raise Exception
         self.optimizer = optimizer
         self.train_iterator = train_iterator
-        self.pbar = pbar if pbar is not None else ProgressBar()
         self.val_iterator = val_iterator
         self.tracker = Tracker(
-            checkpoint_folder=os.path.join(
-                checkpoint_folder, 'tensorboard'),
             purge_step=self.train_iterator.iterator_info().batches_seen)\
             if tracker is None else tracker
-        self.checkpoint_folder = checkpoint_folder
         self.batch_info_class = batch_info_class
         self.val_every = val_every
-        self.checkpoint_every = checkpoint_every
-        self.print_every = print_every
-        self.keep_subbatch_outputs = keep_subbatch_outputs
 
-    def train(self, loss_func, grad_mod=None, iter_info_class=IterationInfo,
-              use_pbar=True):
+    def train(self, loss_func, grad_mod=None, iter_info_class=IterationInfo):
         """
         Trains the model by calling iteration until iteration throws a
         StopIteration Exception.  It uses the loss_func (not optional) to
@@ -61,19 +48,15 @@ class Trainer:
         on the iteration_info object which is initialized every iteration using
         the iter_info_class. Optionally, one can pass in a customized
         iter_info_class. The grad_mod function can be used to modify the
-        gradient before each gradient step is taken. The progress bar is used
-        unless use_pbar is specified False.
+        gradient before each gradient step is taken.
         """
-        if use_pbar:
-            self.pbar.enter(total=len(self.train_iterator.indices_iterator),
-                initial=self.train_iterator.iterator_info().batches_seen)
+        self.tracker.enter(total=len(self.train_iterator.indices_iterator),
+            initial=self.train_iterator.iterator_info().batches_seen)
         try:
             while True:
                 iteration_info = iter_info_class()
                 self.iteration(iteration_info, loss_func, grad_mod=grad_mod)
         except StopIteration:
-            if use_pbar:
-                self.pbar.exit()
             self.tracker.close()
 
     def iteration(self, iteration_info, loss_func, grad_mod=None):
@@ -87,27 +70,7 @@ class Trainer:
         # record iterator info
         iteration_info.set_iterator_info(self.train_iterator.iterator_info())
         # register iteration info with the tracker
-        self.tracker.register_iteration(iteration_info)
-        # print tracker info
-        if self.recurring_bool(iteration_info, self.print_every)\
-           and log_bool():
-            logger.log(str(self.tracker))
-        # save state to file
-        if self.checkpoint_folder is not None\
-           and self.recurring_bool(iteration_info, self.checkpoint_every)\
-           and log_bool():
-            logger.log("saving checkpoint to %s, batches_seen: %i" %
-                       (self.checkpoint_folder,
-                        iteration_info.iterator_info.batches_seen))
-            self.save_state(self.checkpoint_folder)
-        # update progress bar
-        self.pbar.update()
-
-    def recurring_bool(self, iteration_info, every):
-        return (iteration_info.iterator_info.batches_seen
-                % every) == 0\
-               or (iteration_info.iterator_info.batches_seen
-                   == iteration_info.iterator_info.total_batches)
+        self.tracker.register_iteration(iteration_info, self)
 
     def iteration_trainstep(self, iteration_info, loss_func, grad_mod=None):
         train_info = 0
@@ -125,7 +88,7 @@ class Trainer:
             # log subbatch info
             if ((iterator_info.batches_seen
                  + int(not self.train_iterator.take_step()))
-                % self.print_every) == 0:
+                % self.tracker.print_every) == 0:
                 logger.log(indent(iterator_info.subbatch_str(),
                                   "        "), verbosity=2)
             # end loop if the iterator says to take a gradient step
@@ -214,6 +177,3 @@ class Trainer:
         if self.val_iterator is not None:
             self.val_iterator.indices_iterator.save(
                 os.path.join(folder, 'val_indices_iterator.pkl'))
-        # save tracker
-        # TODO: fix this so that history is appended rather than resaved
-        self.tracker.save()

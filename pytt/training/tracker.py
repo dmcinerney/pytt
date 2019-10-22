@@ -1,11 +1,13 @@
 import os
+import socket
+from datetime import datetime
 import torch.distributed as dist
 from torch.utils.tensorboard import SummaryWriter
 from torch import nn
 from pytt.utils import read_pickle, write_pickle
 from pytt.distributed import collect_obj_on_rank0, log_bool
-import socket
-from datetime import datetime
+from pytt.progress_bar import ProgressBar
+from pytt.logger import logger
 
 class Tracker:
     """
@@ -15,18 +17,25 @@ class Tracker:
     checkpoint.  Also contains a string function which can be used for logging
     an iteration during training.
     """
-    def __init__(self, checkpoint_folder=None, purge_step=None,
-                 summary_writers=['train', 'val'], needs_graph=True):
+    def __init__(self, pbar=None, print_every=1, checkpoint_every=1, checkpoint_folder=None, tensorboard_every=1, summary_writers=['train', 'val'], needs_graph=True, purge_step=None):
+        self.print_every = print_every
         self.iteration_info = None
         if not log_bool():
             self.needs_graph = needs_graph
             return
+        self.pbar = pbar if pbar is not None else ProgressBar()
+        self.checkpoint_every = checkpoint_every
+        self.checkpoint_folder = checkpoint_folder
+        self.tensorboard_every = tensorboard_every
+        # set up tensorboard
         if checkpoint_folder is None:
             datetime_machine = datetime.now().strftime('%b%d_%H-%M-%S')\
                                + '_' + socket.gethostname()
-            checkpoint_folder = os.path.join('runs', datetime_machine)
+            tensorboard_folder = os.path.join('runs', datetime_machine)
+        else:
+            tensorboard_folder = os.path.join(checkpoint_folder, 'tensorboard')
         self.summary_writers = {k:
-            SummaryWriter(log_dir=checkpoint_folder+'/'+k,
+            SummaryWriter(log_dir=tensorboard_folder+'/'+k,
                           purge_step=purge_step)
             for k in summary_writers}
         self.needs_graph = needs_graph
@@ -41,7 +50,7 @@ class Tracker:
             writer.add_graph(model, values)
         self.needs_graph = False
 
-    def register_iteration(self, iteration_info):
+    def register_iteration(self, iteration_info, trainer):
         self.iteration_info = iteration_info
         if dist.is_initialized():
             collected = collect_obj_on_rank0(
@@ -51,17 +60,37 @@ class Tracker:
                 self.iteration_info = sum(collected)
             else:
                 self.iteration_info = None
-        if log_bool() and len(self.summary_writers) > 0:
-            self.iteration_info.write_to_tensorboard(self.summary_writers)
+        if log_bool():
+            if self.recurring_bool(iteration_info, self.print_every):
+                logger.log(str(self.iteration_info))
+            if len(self.summary_writers) > 0 and\
+               self.recurring_bool(iteration_info, self.tensorboard_every):
+                self.iteration_info.write_to_tensorboard(self.summary_writers)
+            # save state to file
+            if self.checkpoint_folder is not None\
+               and self.recurring_bool(iteration_info, self.checkpoint_every):
+                logger.log("saving checkpoint to %s, batches_seen: %i" %
+                    (self.tensorboard_folder,
+                     iteration_info.iterator_info.batches_seen))
+                trainer.save_state(self.tensorboard_folder)
+            # update progress bar
+            self.pbar.update()
 
-    def __str__(self):
-        return str(self.iteration_info)
+    def recurring_bool(self, iteration_info, every):
+        return (iteration_info.iterator_info.batches_seen
+                % every) == 0
+
+    def enter(self, *args, **kwargs):
+        if log_bool():
+            self.pbar.enter(*args, **kwargs)
 
     def close(self):
         if not log_bool():
             return
         for writer in self.summary_writers.values():
             writer.close()
+        if log_bool():
+            self.pbar.exit()
 
     def save(self):
         for writer in self.summary_writers.values():
