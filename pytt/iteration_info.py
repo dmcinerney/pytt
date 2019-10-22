@@ -69,8 +69,11 @@ class IterationInfo:
     def to_tensor(self):
         tensors = []
         tensors.append(self.iterator_info.to_tensor().float())
+        max_batch_length = self.iterator_info.subbatches.samples_in_fullbatch
+        self.train_info.set_max_batch_length(max_batch_length)
         tensors.append(self.train_info.to_tensor())
         if self.val_info is not None:
+            self.val_info.set_max_batch_length(max_batch_length)
             tensors.append(self.val_info.to_tensor())
         return torch.cat(tensors, 0)
 
@@ -85,21 +88,29 @@ class IterationInfo:
 
 
 class BatchInfo:
-    def __init__(self, batch_stats, batch_outputs=None,
-                 max_num_instance_outputs=None):
-        self.batch_stats = batch_stats
-        if (batch_outputs is None) !=\
-           (max_num_instance_outputs is None):
-            raise Exception
+    def __init__(self, batch_outputs, batch_length, loss=None, batch_stats=None):
         self.batch_outputs = batch_outputs
-        self.max_num_instance_outputs = max_num_instance_outputs
+        self.batch_length = batch_length
+        self.batch_stats = self.stats() if batch_stats is None else\
+                           batch_stats
+        if loss is not None:
+            self.batch_stats = {'loss':loss.item(), **self.batch_stats}
+        self.filter_batch_outputs()
+        self.max_batch_length = None
+
+    def stats(self):
+        return {}
+
+    def filter_batch_outputs(self):
+        self.batch_outputs = {}
+
+    def set_max_batch_length(self, max_batch_length):
+        self.max_batch_length = max_batch_length
 
     def write_to_tensorboard(self, writer, iterator_info):
         global_step = iterator_info.batches_seen
-        batch_length = self.batch_stats['_batch_length']
         for k,v in self.batch_stats.items():
-            if k != '_batch_length':
-                writer.add_scalar(k, v/batch_length, global_step)
+            writer.add_scalar(k, v/self.batch_length, global_step)
 
     def __add__(self, batch_info):
         new_batch_stats = {}
@@ -107,22 +118,17 @@ class BatchInfo:
                      batch_info.batch_stats.keys()):
             new_batch_stats[k] = self.batch_stats[k]\
                                      + batch_info.batch_stats[k]
-        if self.batch_outputs is not None:
-            new_batch_outputs = {}
-            for k in set(self.batch_outputs.keys()).union(
-                         batch_info.batch_outputs.keys()):
-                new_batch_outputs[k] = pad_and_concat(
-                    [self.batch_outputs[k],
-                     batch_info.batch_outputs[k]])
-                new_batch_outputs[k] = new_batch_outputs[k].view(
-                    -1, *new_batch_outputs[k].shape[2:])
-                new_batch_outputs[k] =\
-                    new_batch_outputs[k][-self.max_num_instance_outputs:]
-        else:
-            new_batch_outputs = None
-        return self.__class__(
-            new_batch_stats, batch_outputs=new_batch_outputs,
-            max_num_instance_outputs=self.max_num_instance_outputs)
+        new_batch_outputs = {}
+        for k in set(self.batch_outputs.keys()).union(
+                    batch_info.batch_outputs.keys()):
+            new_batch_outputs[k] = pad_and_concat(
+                [self.batch_outputs[k],
+                 batch_info.batch_outputs[k]])
+            new_batch_outputs[k] = new_batch_outputs[k].view(
+                -1, *new_batch_outputs[k].shape[2:])
+        new_batch_length = self.batch_length + batch_info.batch_length
+        return self.__class__(new_batch_outputs, new_batch_length,
+                              batch_stats=new_batch_stats)
 
     def __radd__(self, i):
         if i != 0:
@@ -133,43 +139,42 @@ class BatchInfo:
         step_info = ""
         first = True
         for (k,v) in sorted(self.batch_stats.items(), key=lambda kv: kv[0]):
-            if k.startswith('_'):
-                continue
             if not first:
                 step_info += ", "
             first = False
             step_info += ("%s per instance: " % k)\
-                         +str(v/self.batch_stats['_batch_length'])
+                         +str(v/self.batch_length)
         return step_info
 
     def to_tensor(self):
+        if self.max_batch_length is None and len(self.batch_outputs) > 0:
+            raise Exception
         list_of_floats = []
+        list_of_floats.append(self.batch_length)
         for k,v in sorted(self.batch_stats.items(),
                           key=lambda kv: kv[0]):
             list_of_floats.append(v)
-        if self.batch_outputs is not None:
-            for k,v in sorted(self.batch_outputs.items(),
-                              key=lambda kv: kv[0]):
-                shape = (self.max_num_instance_outputs, *v.shape[1:])
-                tensor = torch.zeros(shape, dtype=v.dtype)
-                tensor[:v.size(0)] = v
-                list_of_floats.extend(tensor.flatten().tolist())
+        for k,v in sorted(self.batch_outputs.items(),
+                          key=lambda kv: kv[0]):
+            shape = (self.max_batch_length, *v.shape[1:])
+            tensor = torch.zeros(shape, dtype=v.dtype)
+            tensor[:v.size(0)] = v
+            list_of_floats.extend(tensor.flatten().tolist())
         return torch.tensor(list_of_floats)
 
     def from_tensor(self, tensor, index_iter=None):
         if index_iter is None:
             index_iter = IndexIter(0,tensor.size(0))
+        self.batch_length = int(tensor[next(index_iter)].item())
         for k,v in sorted(self.batch_stats.items(),
                           key=lambda kv: kv[0]):
             self.batch_stats[k] = float(tensor[next(index_iter)].item())
-        if self.batch_outputs is not None:
-            batch_length = int(self.batch_stats['_batch_length'])
-            for k,v in sorted(self.batch_outputs.items(),
-                              key=lambda kv: kv[0]):
-                shape = (self.max_num_instance_outputs, *v.shape[1:])
-                first_element = next(index_iter)
-                last_element = first_element + np.prod(shape)
-                self.batch_outputs[k] = tensor[first_element:last_element]\
-                                            .view(shape)[:batch_length]
-                index_iter.set_offset(last_element)
+        for k,v in sorted(self.batch_outputs.items(),
+                          key=lambda kv: kv[0]):
+            shape = (self.max_num_instance_outputs, *v.shape[1:])
+            first_element = next(index_iter)
+            last_element = first_element + np.prod(shape)
+            self.batch_outputs[k] = tensor[first_element:last_element]\
+                                        .view(shape)[:self.batch_length]
+            index_iter.set_offset(last_element)
         return self

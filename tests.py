@@ -32,6 +32,7 @@ from pytt.training.trainer import Trainer
 from pytt.logger import logger
 from pytt.training.training_controller import AbstractTrainingController
 from pytt.testing.tester import Tester
+from pytt.iteration_info import BatchInfo as BI
 #from pytt.setup import Setup
 
 class Model(nn.Module):
@@ -53,6 +54,14 @@ def loss_func(output):
 def error_func(*args, **kwargs):
     return {'error': torch.tensor(2*next(iter(kwargs.values())).shape[0])}
 
+class BatchInfo(BI):
+    def stats(self):
+        return {k:v.item() for k,v in error_func(**self.batch_outputs).items()}
+
+class BatchInfoTest(BatchInfo):
+    def stats(self):
+        return {'loss':loss_func(**self.batch_outputs).item(), **super(BatchInfoTest, self).stats()}
+
 def spawn_function():
     model = Model()
     if torch.distributed.is_initialized():
@@ -68,17 +77,17 @@ def spawn_function():
     batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=None)
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15, random=True, iterations=len(batch_iterator.indices_iterator)), subbatches=None)
     optimizer = Adam([p for p in model.parameters()])
-    trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, print_every=10, checkpoint_folder='test', checkpoint_every=7)
+    trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, print_every=10, checkpoint_folder='test', checkpoint_every=7, batch_info_class=BatchInfo)
     logger.set_verbosity(2)
-    trainer.train(loss_func, statistics_func=error_func) #, use_pbar=False)
+    trainer.train(loss_func) #, use_pbar=False)
     if log_bool():
         logger.log("\n\nTESTING")
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=None)
-    tester = Tester(model, val_iterator)
+    tester = Tester(model, val_iterator, batch_info_class=BatchInfoTest)
     def test_func(batch, outputs):
         kwargs = {**outputs, **batch.get_target()}
         return None, {"loss":loss_func(**kwargs), **error_func(**kwargs)}
-    tester.test(test_func)
+    tester.test()
 # def spawn_function():
 #     setup = Setup(Model)
 #     val_dataset = SummarizationDataset('/home/jered/Documents/Projects/Summarization/data/cnn_daily_mail_dataset/val_processed.data')

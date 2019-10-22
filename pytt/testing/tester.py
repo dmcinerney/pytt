@@ -24,7 +24,7 @@ class Tester(DatapointProcessor):
         self.print_every = print_every
         self.results = [] if store_results else None
 
-    def test(self, test_func, use_pbar=True):
+    def test(self, use_pbar=True):
         """
         Tests the model by calling next on the batch_iterator until it throws a
         StopIteration Exception.  It uses a test_func to process the output of
@@ -41,11 +41,11 @@ class Tester(DatapointProcessor):
                 initial=self.batch_iterator.iterator_info().batches_seen)
         try:
             while True:
-                result, stats = self.process_batch(
-                    next(self.batch_iterator), test_func)
+                batch_info = self.process_batch(
+                    next(self.batch_iterator))
                 if self.results is not None:
                     self.results.append(result)
-                self.register_iteration(stats)
+                self.register_iteration(batch_info)
                 if self.batch_iterator.take_step():
                     self.pbar.update()
         except StopIteration:
@@ -54,8 +54,7 @@ class Tester(DatapointProcessor):
         return self.total_batch_info
 
     def register_iteration(self, batch_info):
-        self.current_batch_info += self.batch_info_class({
-            k:v.item() for k,v in batch_info.items()})
+        self.current_batch_info += batch_info
         if self.batch_iterator.take_step():
             if dist.is_initialized():
                 collected = collect_obj_on_rank0(self.current_batch_info)

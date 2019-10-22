@@ -63,7 +63,7 @@ class Tracker:
         for writer in self.summary_writers.values():
             writer.close()
 
-    def save(self, filename):
+    def save(self):
         for writer in self.summary_writers.values():
             writer.flush()
 

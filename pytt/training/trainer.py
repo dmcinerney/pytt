@@ -48,8 +48,8 @@ class Trainer:
         self.print_every = print_every
         self.keep_subbatch_outputs = keep_subbatch_outputs
 
-    def train(self, loss_func, statistics_func=None, grad_mod=None,
-              iter_info_class=IterationInfo, use_pbar=True):
+    def train(self, loss_func, grad_mod=None, iter_info_class=IterationInfo,
+              use_pbar=True):
         """
         Trains the model by calling iteration until iteration throws a
         StopIteration Exception.  It uses the loss_func (not optional) to
@@ -70,25 +70,20 @@ class Trainer:
         try:
             while True:
                 iteration_info = iter_info_class()
-                self.iteration(iteration_info, loss_func,
-                    statistics_func=statistics_func, grad_mod=grad_mod)
+                self.iteration(iteration_info, loss_func, grad_mod=grad_mod)
         except StopIteration:
             if use_pbar:
                 self.pbar.exit()
             self.tracker.close()
 
-    def iteration(self, iteration_info, loss_func, statistics_func=None,
-                  grad_mod=None):
+    def iteration(self, iteration_info, loss_func, grad_mod=None):
         batches_seen = self.train_iterator.iterator_info().batches_seen
         # take val step
         if self.val_iterator is not None\
            and ((batches_seen+1) % self.val_every) == 0:
-            self.iteration_valstep(iteration_info, loss_func,
-                                   statistics_func=statistics_func)
+            self.iteration_valstep(iteration_info, loss_func)
         # take train step
-        self.iteration_trainstep(iteration_info, loss_func,
-                                 statistics_func=statistics_func,
-                                 grad_mod=grad_mod)
+        self.iteration_trainstep(iteration_info, loss_func, grad_mod=grad_mod)
         # record iterator info
         iteration_info.set_iterator_info(self.train_iterator.iterator_info())
         # register iteration info with the tracker
@@ -114,26 +109,19 @@ class Trainer:
                or (iteration_info.iterator_info.batches_seen
                    == iteration_info.iterator_info.total_batches)
 
-    def iteration_trainstep(self, iteration_info, loss_func,
-                            statistics_func=None, grad_mod=None):
+    def iteration_trainstep(self, iteration_info, loss_func, grad_mod=None):
         train_info = 0
         # iterate through all the subbatches in a batch, accumulating gradients
         while True:
             # process training subbatch
-            train_stats, train_outputs = self.process_batch(next(self.train_iterator),
-                loss_func, statistics_func=statistics_func, enable_grad=True)
+            loss, batch_info = self.process_batch(
+                next(self.train_iterator), loss_func, enable_grad=True)
             # get iterator_info from iterator
             iterator_info = self.train_iterator.iterator_info()
             # calculate and accumulate gradients
-            self.calculate_grads(train_stats["loss"])
+            self.calculate_grads(loss)
             # accumulate batch info
-            train_info += self.batch_info_class(
-                {k:v.item() for k,v in train_stats.items()},
-                batch_outputs={k:v.detach()
-                               for k,v in train_outputs.items()},
-                max_num_instance_outputs=
-                    iterator_info.subbatches.samples_in_fullbatch
-                    if train_outputs is not None else None)
+            train_info += batch_info
             # log subbatch info
             if ((iterator_info.batches_seen
                  + int(not self.train_iterator.take_step()))
@@ -148,7 +136,7 @@ class Trainer:
         # take a gradient step, with loss summed over all subbatches on all
         # devices, dividing by the number of instances
         self.step(grad_mod=grad_mod,
-                  denominator=train_info.batch_stats["_batch_length"])
+                  denominator=train_info.batch_length)
 
 
     def iteration_valstep(self, iteration_info, loss_func,
@@ -157,17 +145,12 @@ class Trainer:
         # iterate through all the subbatches in a batch
         while True:
             # process subbatch and accumulate validation info
-            val_stats, val_outputs = self.process_batch(
-                next(self.val_iterator), loss_func,
-                statistics_func=statistics_func, enable_grad=False)
+            _, batch_info = self.process_batch(
+                next(self.val_iterator), loss_func, enable_grad=False)
+            # get iterator_info from iterator
             iterator_info = self.val_iterator.iterator_info()
-            val_info += self.batch_info_class({
-                k:v.item() for k,v in val_stats.items()},
-                batch_outputs={k:v.detach()
-                               for k,v in val_outputs.items()},
-                max_num_instance_outputs=
-                    iterator_info.subbatches.samples_in_fullbatch
-                    if val_outputs is not None else None)
+            # accumulate batch info
+            val_info += batch_info
 
             # end loop if the iterator says to take a step
             if self.val_iterator.take_step():
@@ -175,8 +158,7 @@ class Trainer:
         # record validation info
         iteration_info.set_val_info(val_info)
 
-    def process_batch(self, batch, loss_func, statistics_func=None,
-                      enable_grad=True):
+    def process_batch(self, batch, loss_func, enable_grad=True):
         if self.tracker.needs_graph:
             self.tracker.add_graph(self.model, batch)
         # enable or disable gradients
@@ -186,18 +168,8 @@ class Trainer:
             # calculate loss using the outputs of the model and the batch
             # targets
             loss = loss_func(**outputs, **batch.get_target())
-        # if statistics function is given, calculate it without gradients
-        if statistics_func is not None:
-            with torch.autograd.no_grad():
-                stats = statistics_func(**outputs, **batch.get_target())
-        # create the dictionary to return
-        return_dict = {"loss":loss, "_batch_length":torch.tensor(len(batch))}
-        # includes statistics in the return_dict
-        if statistics_func is not None:
-            return_dict.update(stats)
-        if not self.keep_subbatch_outputs:
-            outputs = None
-        return return_dict, outputs
+        # create batch_info object
+        return loss, self.batch_info_class(outputs, len(batch), loss=loss)
 
     def calculate_grads(self, loss):
         # if the model is distributed (a fairseq Legacy Distributed Data
@@ -243,4 +215,4 @@ class Trainer:
                 os.path.join(folder, 'val_indices_iterator.pkl'))
         # save tracker
         # TODO: fix this so that history is appended rather than resaved
-        self.tracker.save(os.path.join(folder, 'tracker.pkl'))
+        self.tracker.save()

@@ -4,14 +4,13 @@ class DatapointProcessor:
     """
     Object used to process datapoints at test time
     """
-    def __init__(self, model):
+    def __init__(self, model, batch_info):
         self.model = model
 
-    def process_batch(self, batch, test_func):
+    def process_batch(self, batch):
         # disable gradients
         with torch.autograd.no_grad():
             # run batch through the model
             outputs = self.model(**batch.get_observed())
             # run the test function on the outputs and batch targets
-            result, stats = test_func(batch, outputs)
-        return result, {**stats, "_batch_length":torch.tensor(len(batch))}
+        return self.batch_info_class(outputs, len(batch))
