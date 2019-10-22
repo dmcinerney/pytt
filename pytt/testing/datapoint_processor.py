@@ -13,4 +13,5 @@ class DatapointProcessor:
             # run batch through the model
             outputs = self.model(**batch.get_observed())
             # run the test function on the outputs and batch targets
-        return self.batch_info_class(outputs, len(batch))
+        kwargs = {**outputs, **batch.get_target()}
+        return self.batch_info_class(kwargs, len(batch))
