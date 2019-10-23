@@ -72,7 +72,7 @@ class Tracker:
                 logger.log("saving checkpoint to %s, batches_seen: %i" %
                     (self.checkpoint_folder,
                      iteration_info.iterator_info.batches_seen))
-                trainer.save_state(self.tensorboard_folder)
+                trainer.save_state(self.checkpoint_folder)
             # update progress bar
             self.pbar.update()
 
