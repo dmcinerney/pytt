@@ -16,9 +16,9 @@ class Trainer:
     """
     Trainer object containing model, optimizer, train_iterator and optionally,
     a val_iterator, and a tracker.  It also optionally saves everything along
-    with a ranodm state to a checkpoint_folder.  It can use custom batch info
+    with a random state to a checkpoint_folder.  It can use custom batch info
     classes and progress_bar classes, and the frequency of validating,
-    checkpointing, and printing can be controlled.
+    checkpointing, and printing can be controlled with the tracker object.
     """
     def __init__(self, model, optimizer, train_iterator, val_iterator=None,
                  tracker=None, batch_info_class=BatchInfo, val_every=1):
@@ -39,16 +39,8 @@ class Trainer:
     def train(self, loss_func, grad_mod=None, iter_info_class=IterationInfo):
         """
         Trains the model by calling iteration until iteration throws a
-        StopIteration Exception.  It uses the loss_func (not optional) to
-        perform optimization and the statistics_func to return relevant batch
-        statistics to keep track of throughout training.  This only returns a
-        dictionary of floats, and cannot be used to record any other type of
-        data.  Information from the iterator_info, and the loss and statistics
-        numbers from each batch (optionally also the val batch) are collected
-        on the iteration_info object which is initialized every iteration using
-        the iter_info_class. Optionally, one can pass in a customized
-        iter_info_class. The grad_mod function can be used to modify the
-        gradient before each gradient step is taken.
+        StopIteration Exception.
+        TODO: Need to fill this out further.
         """
         self.tracker.enter(total=len(self.train_iterator.indices_iterator),
             initial=self.train_iterator.iterator_info().batches_seen)
@@ -102,8 +94,7 @@ class Trainer:
                   denominator=train_info.batch_length)
 
 
-    def iteration_valstep(self, iteration_info, loss_func,
-                          statistics_func=None):
+    def iteration_valstep(self, iteration_info, loss_func):
         val_info = 0
         # iterate through all the subbatches in a batch
         while True:
@@ -133,7 +124,7 @@ class Trainer:
             kwargs = {**outputs, **batch.get_target()}
             loss = loss_func(**kwargs)
         # create batch_info object
-        return loss, self.batch_info_class(kwargs, len(batch), loss=loss)
+        return loss, self.batch_info_class(len(batch), batch=batch, batch_outputs=kwargs, loss=loss)
 
     def calculate_grads(self, loss):
         # if the model is distributed (a fairseq Legacy Distributed Data
