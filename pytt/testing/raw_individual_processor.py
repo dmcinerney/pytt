@@ -11,4 +11,4 @@ class RawIndividualProcessor(DatapointProcessor):
         batch = self.batcher.batch_from_raw([raw_datapoint])
         if self.device is not None:
             batch = batch.to(self.device)
-        return super(RawIndividaulProcessor, self).process_batch(batch)
+        return super(RawIndividualProcessor, self).process_batch(batch)
