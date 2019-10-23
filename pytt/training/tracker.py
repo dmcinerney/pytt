@@ -70,7 +70,7 @@ class Tracker:
             if self.checkpoint_folder is not None\
                and self.recurring_bool(iteration_info, self.checkpoint_every):
                 logger.log("saving checkpoint to %s, batches_seen: %i" %
-                    (self.tensorboard_folder,
+                    (self.checkpoint_folder,
                      iteration_info.iterator_info.batches_seen))
                 trainer.save_state(self.tensorboard_folder)
             # update progress bar
