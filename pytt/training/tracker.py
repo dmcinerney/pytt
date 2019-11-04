@@ -78,7 +78,9 @@ class Tracker:
 
     def recurring_bool(self, iteration_info, every):
         return (iteration_info.iterator_info.batches_seen
-                % every) == 0
+                % every) == 0\
+               or iteration_info.iterator_info.batches_seen\
+                  == iteration_info.iterator_info.total_batches
 
     def enter(self, *args, **kwargs):
         if log_bool():
