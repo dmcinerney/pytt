@@ -99,6 +99,8 @@ def get_max_dims(tensors):
     Returns None if the tensors are all the same size and the maximum size in
     each dimension otherwise
     """
+    if len(tensors) <= 0:
+        return None
     dim = tensors[0].dim()
     max_size = [0]*dim
     different = False
@@ -118,21 +120,32 @@ def pad_and_concat(tensors, max_size=None, auto=True):
     """
     Returns concatenated tensors with the added batch dimension being first
     """
-    dim = tensors[0].dim()
     if auto:
         if max_size is not None:
-            raise Exception
+            raise Exception("Must turn auto off to specify max size.")
         max_size = get_max_dims(tensors)
     concatenated_tensor = []
-    for tensor in tensors:
+    for i,tensor in enumerate(tensors):
+        if i == 0:
+            dim = tensor.dim()
         if tensor.dim() != dim:
-            raise Exception
+            raise Exception("Number of dimensions does not match!")
         if max_size is not None:
             padding = []
             for i in range(dim-1,-1,-1):
-                padding.extend([0,max_size[i]-tensor.size(i)])
+                diff = max_size[i]-tensor.size(i)
+                if diff < 0:
+                    raise Exception(
+                        "Tensor dim greater than specified max size!")
+                padding.extend([0,diff])
             new_tensor = F.pad(tensor, tuple(padding))
         else:
+            if i == 0:
+                shape = tensor.shape
+            if tensor.shape != shape:
+                raise Exception(
+                    "When auto is turned off and max_size is None, "\
+                    + "tensor shapes must match!")
             new_tensor = tensor
         concatenated_tensor.append(new_tensor.view(1,*new_tensor.size()))
     concatenated_tensor = torch.cat(concatenated_tensor, 0)
