@@ -1,4 +1,3 @@
-from pytt.iteration_info import BatchInfo
 from pytt.testing.datapoint_processor import DatapointProcessor
 
 class RawIndividualProcessor(DatapointProcessor):
