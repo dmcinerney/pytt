@@ -42,12 +42,6 @@ class AbstractBatcher:
         """
         raise NotImplementedError
 
-    def out_batch_to_readable(self, output_batch):
-        """
-        Returns a list of readable outputs given the output batch from the model
-        """
-        raise NotImplementedError
-
     def batch_iterator(self, dataset, indices_iterator):
         """
         Returns an iterator of batches from the dataset iterating according to
@@ -266,48 +260,3 @@ class AbstractBatch:
             if isinstance(v, torch.Tensor):
                 self.collated_datapoints[k] = v.to(device=device)
         return self
-
-
-# TODO: determine if the following are necessary
-
-class AbstractOutputInstance:
-    """
-    Handles postprocessing of model ouptuts into something readable
-
-    This is an abstract class that allows a very flexible framework for creating
-    output instances.  See standard_batchers.py for examples of standard
-    implementations of this abstract architecture.
-    """
-    def __init__(self, output):
-        """
-        Initializes the output instance with the output for a single example
-        """
-        raise NotImplementedError
-
-
-class AbstractOutputBatch:
-    """
-    Handles collecting model outputs into an output_batch object
-
-    This is an abstract class that allows a very flexible framework for creating
-    output batches.  See standard_batchers.py for examples of standard
-    implementations of this abstract architecture.
-    """
-    @staticmethod
-    def combine(output_batches):
-        """
-        Combines multiple AbstractOutputBatch objects into one
-        """
-        raise NotImplementedError
-
-    def __init__(self, model_output):
-        """
-        Initializes output batch object from a raw model output
-        """
-        raise NotImplementedError
-
-    def get_output_insances(self):
-        """
-        Returns a list of AbstractOutputInstance objects
-        """
-        raise NotImplementedError

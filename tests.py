@@ -33,7 +33,7 @@ from pytt.training.tracker import Tracker
 from pytt.logger import logger
 from pytt.training.training_controller import AbstractTrainingController
 from pytt.testing.tester import Tester
-from pytt.iteration_info import BatchInfo as BI
+from pytt.batching.postprocessor import StandardPostprocessor, StandardOutputBatch
 #from pytt.setup import Setup
 
 class Model(nn.Module):
@@ -55,21 +55,28 @@ def loss_func(output):
 def error_func(*args, **kwargs):
     return {'error': torch.tensor(2*next(iter(kwargs.values())).shape[0])}
 
-class BatchInfo(BI):
-    def stats(self):
-        return {k:v.item() for k,v in error_func(**self.batch_outputs).items()}
+class Postprocessor(StandardPostprocessor):
+    def output_batch(self, batch, output):
+        return super(Postprocessor, self).output_batch(batch, output, output_batch_class=OutputBatch)
 
-class BatchInfoTest(BatchInfo):
-    def stats(self):
-        return {'loss':loss_func(**self.batch_outputs).item(), **super(BatchInfoTest, self).stats()}
+class OutputBatch(StandardOutputBatch):
+    @classmethod
+    def stats(cls, batch, outputs):
+        return {k:v.item() for k,v in error_func(**outputs).items()}
+
+    @classmethod
+    def loss(cls, batch, outputs):
+        return loss_func(**outputs)
 
 def spawn_function():
+    seed_state()
     model = Model()
     if torch.distributed.is_initialized():
         rank = torch.distributed.get_rank()
         worldsize = torch.distributed.get_world_size()
         model = LDDP(model.to(rank), worldsize)
     tokenizer = Tokenizer(load_vocab('/home/jered/Documents/data/cnn_dataset/vocab', 50000))
+    postprocessor = Postprocessor()
     batcher = TrainSummarizationBatcher(tokenizer)
     val_batcher = TestSummarizationBatcher(tokenizer)
     val_dataset = SummarizationDataset('/home/jered/Documents/data/cnn_dataset/preprocessed/val_processed.data')
@@ -79,16 +86,13 @@ def spawn_function():
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15, random=True, iterations=len(batch_iterator.indices_iterator)), subbatches=None)
     optimizer = Adam([p for p in model.parameters()])
     tracker = Tracker(print_every=10, checkpoint_folder='test', checkpoint_every=7)
-    trainer = Trainer(model, optimizer, batch_iterator, val_iterator=val_iterator, batch_info_class=BatchInfo)
+    trainer = Trainer(model, postprocessor, optimizer, batch_iterator, val_iterator=val_iterator)
     logger.set_verbosity(2)
-    trainer.train(loss_func) #, use_pbar=False)
+    trainer.train() #, use_pbar=False)
     if log_bool():
         logger.log("\n\nTESTING")
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15), subbatches=None)
-    tester = Tester(model, val_iterator, batch_info_class=BatchInfoTest)
-    def test_func(batch, outputs):
-        kwargs = {**outputs, **batch.get_target()}
-        return None, {"loss":loss_func(**kwargs), **error_func(**kwargs)}
+    tester = Tester(model, postprocessor, val_iterator)
     tester.test()
 # def spawn_function():
 #     setup = Setup(Model)
@@ -136,7 +140,6 @@ def spawn_function():
 #                test_state=test_state)
 
 if __name__ == '__main__':
-    seed_state()
     nprocs = 2
     distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
     distributed_spawn_function()

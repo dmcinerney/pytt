@@ -41,10 +41,6 @@ class StandardBatcher(AbstractBatcher):
                 return batch_class.init_batches_across_devices(
                     list(instances), devices)
 
-    def out_batch_to_readable(self, output_batch):
-        # TODO: implement this
-        raise NotImplementedError
-
     def batch_iterator(self, dataset, indices_iterator, subbatches=None,
                        num_workers=0, devices=None):
         """
@@ -85,7 +81,3 @@ class StandardBatch(AbstractBatch):
              if isinstance(datapoints[0][k], torch.Tensor) else
              [datapoint[k] for datapoint in datapoints]
            for k in datapoints[0].keys()}
-
-
-# TODO: figure out if something can be done for the output batch and output
-# instance objects

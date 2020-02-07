@@ -19,6 +19,8 @@ def setup(rank, world_size, random_state=None, environment_name='MASTER',
     dist.init_process_group(backend, rank=rank, world_size=world_size)
 
     # set random state
+    # TODO: have to check whether this really works, because it doesn't in
+    #       tests.py
     if random_state is not None:
         set_random_state(random_state)
 

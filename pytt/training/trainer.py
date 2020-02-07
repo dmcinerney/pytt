@@ -7,9 +7,8 @@ try:
 except ImportError:
     LDDP = type(None)
 from pytt.logger import logger
-from pytt.iteration_info import IterationInfo
-from pytt.training.tracker import Tracker
-from pytt.iteration_info import BatchInfo
+from .iteration_info import IterationInfo
+from .tracker import Tracker
 from pytt.utils import MultiBatchGradMod, indent, write_pickle, get_random_state
 
 class Trainer:
@@ -20,11 +19,12 @@ class Trainer:
     classes and progress_bar classes, and the frequency of validating,
     checkpointing, and printing can be controlled with the tracker object.
     """
-    def __init__(self, model, optimizer, train_iterator, val_iterator=None,
-                 tracker=None, batch_info_class=BatchInfo, val_every=1):
+    def __init__(self, model, postprocessor, optimizer, train_iterator,
+                 val_iterator=None, tracker=None, val_every=1):
         if dist.is_initialized() and LDDP is None:
             raise Exception
         self.model = model
+        self.postprocessor = postprocessor
         if dist.is_initialized() and not isinstance(self.model, LDDP):
             raise Exception
         self.optimizer = optimizer
@@ -33,10 +33,9 @@ class Trainer:
         self.tracker = Tracker(
             purge_step=self.train_iterator.iterator_info().batches_seen)\
             if tracker is None else tracker
-        self.batch_info_class = batch_info_class
         self.val_every = val_every
 
-    def train(self, loss_func, grad_mod=None, iter_info_class=IterationInfo):
+    def train(self, grad_mod=None, iter_info_class=IterationInfo):
         """
         Trains the model by calling iteration until iteration throws a
         StopIteration Exception.
@@ -47,36 +46,36 @@ class Trainer:
         try:
             while True:
                 iteration_info = iter_info_class()
-                self.iteration(iteration_info, loss_func, grad_mod=grad_mod)
+                self.iteration(iteration_info, grad_mod=grad_mod)
         except StopIteration:
             self.tracker.close()
 
-    def iteration(self, iteration_info, loss_func, grad_mod=None):
+    def iteration(self, iteration_info, grad_mod=None):
         batches_seen = self.train_iterator.iterator_info().batches_seen
         # take val step
         if self.val_iterator is not None\
            and ((batches_seen+1) % self.val_every) == 0:
-            self.iteration_valstep(iteration_info, loss_func)
+            self.iteration_valstep(iteration_info)
         # take train step
-        self.iteration_trainstep(iteration_info, loss_func, grad_mod=grad_mod)
+        self.iteration_trainstep(iteration_info, grad_mod=grad_mod)
         # record iterator info
         iteration_info.set_iterator_info(self.train_iterator.iterator_info())
         # register iteration info with the tracker
         self.tracker.register_iteration(iteration_info, self)
 
-    def iteration_trainstep(self, iteration_info, loss_func, grad_mod=None):
+    def iteration_trainstep(self, iteration_info, grad_mod=None):
         train_info = 0
         # iterate through all the subbatches in a batch, accumulating gradients
         while True:
             # process training subbatch
-            loss, batch_info = self.process_batch(
-                next(self.train_iterator), loss_func, enable_grad=True)
+            loss, output_batch = self.process_batch(
+                next(self.train_iterator), enable_grad=True)
             # get iterator_info from iterator
             iterator_info = self.train_iterator.iterator_info()
             # calculate and accumulate gradients
             self.calculate_grads(loss)
             # accumulate batch info
-            train_info += batch_info
+            train_info += output_batch
             # log subbatch info
             if ((iterator_info.batches_seen
                  + int(not self.train_iterator.take_step()))
@@ -94,17 +93,17 @@ class Trainer:
                   denominator=train_info.batch_length)
 
 
-    def iteration_valstep(self, iteration_info, loss_func):
+    def iteration_valstep(self, iteration_info):
         val_info = 0
         # iterate through all the subbatches in a batch
         while True:
             # process subbatch and accumulate validation info
-            _, batch_info = self.process_batch(
-                next(self.val_iterator), loss_func, enable_grad=False)
+            _, output_batch = self.process_batch(
+                next(self.val_iterator), enable_grad=False)
             # get iterator_info from iterator
             iterator_info = self.val_iterator.iterator_info()
             # accumulate batch info
-            val_info += batch_info
+            val_info += output_batch
 
             # end loop if the iterator says to take a step
             if self.val_iterator.take_step():
@@ -112,7 +111,7 @@ class Trainer:
         # record validation info
         iteration_info.set_val_info(val_info)
 
-    def process_batch(self, batch, loss_func, enable_grad=True):
+    def process_batch(self, batch, enable_grad=True):
         if self.tracker.needs_graph:
             self.tracker.add_graph(self.model, batch)
         # enable or disable gradients
@@ -122,9 +121,8 @@ class Trainer:
             # calculate loss using the outputs of the model and the batch
             # targets
             kwargs = {**outputs, **batch.get_target()}
-            loss = loss_func(**kwargs)
-        # create batch_info object
-        return loss, self.batch_info_class(len(batch), batch=batch, batch_outputs=kwargs, loss=loss)
+            # create output_batch object
+            return self.postprocessor.output_batch(batch, kwargs)
 
     def calculate_grads(self, loss):
         # if the model is distributed (a fairseq Legacy Distributed Data

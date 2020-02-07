@@ -1,13 +1,12 @@
 import torch
-from pytt.iteration_info import BatchInfo
 
 class DatapointProcessor:
     """
     Object used to process datapoints at test time
     """
-    def __init__(self, model, batch_info_class=BatchInfo):
+    def __init__(self, model, postprocessor):
         self.model = model
-        self.batch_info_class = batch_info_class
+        self.postprocessor = postprocessor
 
     def process_batch(self, batch):
         # disable gradients
@@ -15,5 +14,6 @@ class DatapointProcessor:
             # run batch through the model
             outputs = self.model(**batch.get_observed())
             # run the test function on the outputs and batch targets
-        kwargs = {**outputs, **batch.get_target()}
-        return self.batch_info_class(len(batch), batch=batch, batch_outputs=kwargs)
+            kwargs = {**outputs, **batch.get_target()}
+            # ignore loss
+            return self.postprocessor.output_batch(batch, kwargs)[1]
