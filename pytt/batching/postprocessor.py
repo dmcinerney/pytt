@@ -1,5 +1,5 @@
 import torch
-from pytt.utils import IndexIter
+from pytt.utils import IndexIter, pad_and_concat
 
 class AbstractPostprocessor:
     def __init__(self):
@@ -8,7 +8,7 @@ class AbstractPostprocessor:
         """
         raise NotImplementedError
 
-    def batch_info(self, batch, outputs):
+    def output_batch(self, batch, outputs):
         """
         Returns a batch info object that performs any postprocessing of the
         model outputs
@@ -53,7 +53,7 @@ class AbstractOutputBatch:
         self.batch = batch
         self.outputs = outputs
 
-    def __add__(self, batch_info):
+    def __add__(self, output_batch):
         """
         TODO: fill out this comment
         """
@@ -107,15 +107,15 @@ class StandardOutputBatch(AbstractOutputBatch):
         # this might be called when gred is enabled, and there is no reason
         # to enable grad when not necessary
         with torch.autograd.no_grad():
-            return loss, cls(len(batch), stats)
+            return loss, cls(len(batch), stats, batch=batch, outputs=outputs)
 
     @classmethod
-    def get_loss_stats(cls, batch, outputs):
-        loss = cls.loss(batch, outputs)
+    def get_loss_stats(cls, *args, **kwargs):
+        loss = cls.loss(*args, **kwargs)
         # this might be called when gred is enabled, and there is no reason
         # to enable grad when not necessary
         with torch.autograd.no_grad():
-            stats = cls.stats(batch, outputs)
+            stats = cls.stats(*args, **kwargs)
         if loss is not None:
             stats['loss'] = loss.item()
         return loss, stats
@@ -131,30 +131,32 @@ class StandardOutputBatch(AbstractOutputBatch):
     def __init__(self, batch_length, batch_stats, batch=None, outputs=None):
         self.batch_length = batch_length
         self.batch_stats = batch_stats
-        self.batch = batch
-        self.outputs = outputs
+        # defaults to not saving batch our outputs even if passed in
+        # (can be overridden)
+        self.batch = None
+        self.outputs = None
 
     def write_to_tensorboard(self, writer, iterator_info):
         # NOTE: this only occurs after every iteration, which in some cases is
-        #       after two batch_info's have been added together
+        #       after two output_batch's have been added together
         global_step = iterator_info.batches_seen
         for k,v in self.batch_stats.items():
             writer.add_scalar(k, v/self.batch_length, global_step)
 
-    def __add__(self, batch_info):
+    def __add__(self, output_batch):
         new_batch_stats = {}
         for k in set(self.batch_stats.keys()).union(
-                     batch_info.batch_stats.keys()):
+                     output_batch.batch_stats.keys()):
             new_batch_stats[k] = self.batch_stats[k]\
-                                     + batch_info.batch_stats[k]
-        new_batch_length = self.batch_length + batch_info.batch_length
+                                     + output_batch.batch_stats[k]
+        new_batch_length = self.batch_length + output_batch.batch_length
         if self.outputs is not None:
             new_outputs = {}
             for k in set(self.outputs.keys()).union(
-                         batch_info.outputs.keys()):
+                         output_batch.outputs.keys()):
                 new_outputs[k] = pad_and_concat(
                     [self.outputs[k],
-                     batch_info.outputs[k]])
+                     output_batch.outputs[k]])
                 new_outputs[k] = new_outputs[k].view(
                     -1, *new_outputs[k].shape[2:])
         else:
