@@ -12,7 +12,7 @@ from email.mime.text import MIMEText
 
 def get_email_info(sender_email=None, sender_password=None, receiver_email=None):
     se = input("Sender email (only gmail for now): ") if sender_email is None else sender_email
-    sp = getpass("Sender password: ") if sender_password is None else sender_password
+    sp = getpass("Sender password for %s: " % se) if sender_password is None else sender_password
     re = input("Receiver email: ") if receiver_email is None else receiver_email
     return se, sp, re
 
