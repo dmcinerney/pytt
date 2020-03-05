@@ -1,4 +1,7 @@
+#TODO: re-enforce the line character limit
 import os
+import subprocess
+from threading import Thread
 import tempfile
 import zipfile
 import socket
@@ -20,9 +23,11 @@ class Tracker:
     checkpoint.  Also contains a string function which can be used for logging
     an iteration during training.
     """
-    def __init__(self, pbar=None, print_every=1, checkpoint_every=1, checkpoint_folder=None,
-                 tensorboard_every=1, summary_writers=['train', 'val'], needs_graph=True,
-                 purge_step=None, email_every=None, email_sender=None):
+    def __init__(self, pbar=None, print_every=1, checkpoint_every=1,
+                 copy_checkpoint_every=None, checkpoint_folder=None,
+                 tensorboard_every=1, summary_writers=['train', 'val'],
+                 needs_graph=True, purge_step=None, email_every=None,
+                 email_sender=None):
         self.print_every = print_every
         self.iteration_info = None
         if not log_bool():
@@ -30,7 +35,11 @@ class Tracker:
             return
         self.pbar = pbar if pbar is not None else ProgressBar()
         self.checkpoint_every = checkpoint_every
+        self.copy_checkpoint_every = copy_checkpoint_every
         self.checkpoint_folder = checkpoint_folder
+        if self.copy_checkpoint_every is not None:
+            self.saved_checkpoints = 0
+            subprocess.run(["mkdir", os.path.join(self.checkpoint_folder, "saved_checkpoints")])
         # set up tensorboard
         self.tensorboard_every = tensorboard_every
         if checkpoint_folder is None:
@@ -46,7 +55,7 @@ class Tracker:
         self.needs_graph = needs_graph
         # set up email
         self.email_every = email_every
-        if log_bool():
+        if self.email_every is not None and log_bool():
             if email_sender is None:
                 raise Exception
             self.email_sender = email_sender
@@ -84,6 +93,14 @@ class Tracker:
                     (self.checkpoint_folder,
                      iteration_info.iterator_info.batches_seen))
                 trainer.save_state(self.checkpoint_folder)
+            # copy checkpoint
+            if self.copy_checkpoint_every is not None\
+               and self.recurring_bool(iteration_info, self.copy_checkpoint_every):
+                logger.log("copying to checkpoint number %i, batches_seen: %i" %
+                    (self.saved_checkpoints,
+                     iteration_info.iterator_info.batches_seen))
+                self.copy_checkpoint_in_thread()
+                logger.log("continuing")
             # email
             if self.recurring_bool(iteration_info, self.email_every):
                 logger.log("sending email to %s, batches_seen: %i" %
@@ -125,6 +142,12 @@ class Tracker:
         for writer in self.summary_writers.values():
             writer.flush()
 
+    def copy_checkpoint_in_thread(self):
+        onfinish = "done copying to checkpoint number %i" % self.saved_checkpoints
+        thread = Thread(target=copy_checkpoint, args=[self.checkpoint_folder, self.saved_checkpoints, onfinish])
+        thread.start()
+        self.saved_checkpoints += 1
+
 class ModelWrapper(nn.Module):
     def __init__(self, model, keys):
         super(ModelWrapper, self).__init__()
@@ -153,3 +176,12 @@ def create_tensorboard_attachment_generator(dir):
     zf.seek(0)
     yield basename, basename + ".zip", zf
     zf.close()
+
+def copy_checkpoint(checkpoint, checkpoint_num, onfinish="done copying checkpoint"):
+    stuff = set(os.listdir(checkpoint))
+    stuff.remove('saved_checkpoints')
+    saved_checkpoint = os.path.join(checkpoint, 'saved_checkpoints', 'checkpoint%i' % checkpoint_num)
+    subprocess.run(["mkdir", saved_checkpoint])
+    for x in stuff:
+        subprocess.run(["cp", "-r", os.path.join(checkpoint, x), saved_checkpoint])
+    logger.log(onfinish)

@@ -87,7 +87,7 @@ def spawn_function(email_sender):
     batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=None)
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15, random=True, iterations=len(batch_iterator.indices_iterator)), subbatches=None)
     optimizer = Adam([p for p in model.parameters()])
-    tracker = Tracker(print_every=10, checkpoint_folder='test', checkpoint_every=7, email_every=10, email_sender=email_sender)
+    tracker = Tracker(print_every=10, checkpoint_folder='test', checkpoint_every=7, copy_checkpoint_every=7) #, email_every=10, email_sender=email_sender)
     trainer = Trainer(model, postprocessor, optimizer, batch_iterator, val_iterator=val_iterator, tracker=tracker)
     logger.set_verbosity(2)
     trainer.train() #, use_pbar=False)
@@ -142,8 +142,9 @@ def spawn_function(email_sender):
 #                test_state=test_state)
 
 if __name__ == '__main__':
-    es = EmailSender(subject="pytt test")
-    es.send_email("starting pytt test")
+    #es = EmailSender(subject="pytt test")
+    #es.send_email("starting pytt test")
+    es = None
     nprocs = 2
     distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
     distributed_spawn_function(es)
