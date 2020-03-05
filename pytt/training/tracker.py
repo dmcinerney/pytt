@@ -37,7 +37,8 @@ class Tracker:
         self.checkpoint_every = checkpoint_every
         self.copy_checkpoint_every = copy_checkpoint_every
         self.checkpoint_folder = checkpoint_folder
-        if self.copy_checkpoint_every is not None:
+        if self.copy_checkpoint_every is not None\
+           and self.checkpoint_folder is not None:
             self.saved_checkpoints = 0
             subprocess.run(["mkdir", os.path.join(self.checkpoint_folder, "saved_checkpoints")])
         # set up tensorboard
@@ -94,7 +95,7 @@ class Tracker:
                      iteration_info.iterator_info.batches_seen))
                 trainer.save_state(self.checkpoint_folder)
             # copy checkpoint
-            if self.copy_checkpoint_every is not None\
+            if self.checkpoint_folder is not None\
                and self.recurring_bool(iteration_info, self.copy_checkpoint_every):
                 logger.log("copying to checkpoint number %i, batches_seen: %i" %
                     (self.saved_checkpoints,
