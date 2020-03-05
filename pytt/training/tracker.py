@@ -98,6 +98,7 @@ class Tracker:
                              iteration_info.iterator_info.batches_seen,
                     onerror="Error sending email at %i batches_seen!" %
                             iteration_info.iterator_info.batches_seen)
+                logger.log("continuing")
             # update progress bar
             self.pbar.update()
 
