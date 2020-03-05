@@ -173,3 +173,4 @@ class IndexIter:
 
     def peek(self):
         return self.offset
+

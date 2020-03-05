@@ -35,6 +35,7 @@ from pytt.training.training_controller import AbstractTrainingController
 from pytt.testing.tester import Tester
 from pytt.batching.postprocessor import StandardPostprocessor, StandardOutputBatch
 #from pytt.setup import Setup
+from pytt.email import EmailSender
 
 class Model(nn.Module):
     def __init__(self):
@@ -68,12 +69,13 @@ class OutputBatch(StandardOutputBatch):
     def loss(cls, batch, outputs):
         return loss_func(**outputs)
 
-def spawn_function():
+def spawn_function(email_sender):
     seed_state()
     model = Model()
     if torch.distributed.is_initialized():
         rank = torch.distributed.get_rank()
         worldsize = torch.distributed.get_world_size()
+#        model = LDDP(model.to('cpu'), worldsize)
         model = LDDP(model.to(rank), worldsize)
     tokenizer = Tokenizer(load_vocab('/home/jered/Documents/data/cnn_dataset/vocab', 50000))
     postprocessor = Postprocessor()
@@ -85,8 +87,8 @@ def spawn_function():
     batch_iterator = batcher.batch_iterator(train_dataset, init_indices_iterator(len(train_dataset), batch_size=15, random=True, iterations=200), subbatches=None)
     val_iterator = batcher.batch_iterator(val_dataset, init_indices_iterator(100, batch_size=15, random=True, iterations=len(batch_iterator.indices_iterator)), subbatches=None)
     optimizer = Adam([p for p in model.parameters()])
-    tracker = Tracker(print_every=10, checkpoint_folder='test', checkpoint_every=7)
-    trainer = Trainer(model, postprocessor, optimizer, batch_iterator, val_iterator=val_iterator)
+    tracker = Tracker(print_every=10, checkpoint_folder='test', checkpoint_every=7, email_every=10, email_sender=email_sender)
+    trainer = Trainer(model, postprocessor, optimizer, batch_iterator, val_iterator=val_iterator, tracker=tracker)
     logger.set_verbosity(2)
     trainer.train() #, use_pbar=False)
     if log_bool():
@@ -140,8 +142,10 @@ def spawn_function():
 #                test_state=test_state)
 
 if __name__ == '__main__':
+    es = EmailSender(subject="pytt test")
+    es.send_email("starting pytt test")
     nprocs = 2
     distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
-    distributed_spawn_function()
+    distributed_spawn_function(es)
     #setup(0,1)
-    #spawn_function()
+    #spawn_function(es)

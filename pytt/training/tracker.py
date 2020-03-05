@@ -1,4 +1,6 @@
 import os
+import tempfile
+import zipfile
 import socket
 from datetime import datetime
 import torch.distributed as dist
@@ -8,6 +10,7 @@ from pytt.utils import read_pickle, write_pickle
 from pytt.distributed import collect_obj_on_rank0, log_bool
 from pytt.progress_bar import ProgressBar
 from pytt.logger import logger
+from pytt.email import EmailSender
 
 class Tracker:
     """
@@ -17,7 +20,9 @@ class Tracker:
     checkpoint.  Also contains a string function which can be used for logging
     an iteration during training.
     """
-    def __init__(self, pbar=None, print_every=1, checkpoint_every=1, checkpoint_folder=None, tensorboard_every=1, summary_writers=['train', 'val'], needs_graph=True, purge_step=None):
+    def __init__(self, pbar=None, print_every=1, checkpoint_every=1, checkpoint_folder=None,
+                 tensorboard_every=1, summary_writers=['train', 'val'], needs_graph=True,
+                 purge_step=None, email_every=None, email_sender=None):
         self.print_every = print_every
         self.iteration_info = None
         if not log_bool():
@@ -26,19 +31,25 @@ class Tracker:
         self.pbar = pbar if pbar is not None else ProgressBar()
         self.checkpoint_every = checkpoint_every
         self.checkpoint_folder = checkpoint_folder
-        self.tensorboard_every = tensorboard_every
         # set up tensorboard
+        self.tensorboard_every = tensorboard_every
         if checkpoint_folder is None:
             datetime_machine = datetime.now().strftime('%b%d_%H-%M-%S')\
                                + '_' + socket.gethostname()
-            tensorboard_folder = os.path.join('runs', datetime_machine)
+            self.tensorboard_folder = os.path.join('runs', datetime_machine)
         else:
-            tensorboard_folder = os.path.join(checkpoint_folder, 'tensorboard')
+            self.tensorboard_folder = os.path.join(checkpoint_folder, 'tensorboard')
         self.summary_writers = {k:
-            SummaryWriter(log_dir=tensorboard_folder+'/'+k,
+            SummaryWriter(log_dir=self.tensorboard_folder+'/'+k,
                           purge_step=purge_step)
             for k in summary_writers}
         self.needs_graph = needs_graph
+        # set up email
+        self.email_every = email_every
+        if log_bool():
+            if email_sender is None:
+                raise Exception
+            self.email_sender = email_sender
 
     def add_graph(self, model, batch):
         if not log_bool():
@@ -73,11 +84,26 @@ class Tracker:
                     (self.checkpoint_folder,
                      iteration_info.iterator_info.batches_seen))
                 trainer.save_state(self.checkpoint_folder)
+            # email
+            if self.recurring_bool(iteration_info, self.email_every):
+                logger.log("sending email to %s, batches_seen: %i" %
+                    (self.email_sender.receiver_email,
+                     iteration_info.iterator_info.batches_seen))
+                attachments = [] if len(self.summary_writers) <= 0 else\
+                              create_tensorboard_attachment_generator(
+                                  self.tensorboard_folder)
+                self.email_sender(str(iteration_info),
+                    attachments=attachments,
+                    onfinish="Done sending email at %i batches_seen" %
+                             iteration_info.iterator_info.batches_seen,
+                    onerror="Error sending email at %i batches_seen!" %
+                            iteration_info.iterator_info.batches_seen)
             # update progress bar
             self.pbar.update()
 
     def recurring_bool(self, iteration_info, every):
-        return (iteration_info.iterator_info.batches_seen
+        return every is not None and\
+               (iteration_info.iterator_info.batches_seen
                 % every) == 0\
                or iteration_info.iterator_info.batches_seen\
                   == iteration_info.iterator_info.total_batches
@@ -107,3 +133,22 @@ class ModelWrapper(nn.Module):
     def forward(self, *values):
         kwargs = {k:v for k,v in zip(self.keys,values)}
         return tuple(self.model(**kwargs).values())
+
+# taken from https://stackoverflow.com/questions/1855095/how-to-create-a-zip-archive-of-a-directory-in-python
+def zipdir(path, ziph):
+    # ziph is zipfile handle
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            ziph.write(os.path.join(root, file))
+
+def create_tensorboard_attachment_generator(dir):
+    basename = os.path.basename(dir)
+
+    # create zipfile
+    zf = tempfile.TemporaryFile(prefix=basename, suffix='.zip')
+    zip = zipfile.ZipFile(zf, 'w')
+    zipdir(dir, zip)
+    zip.close()
+    zf.seek(0)
+    yield basename, basename + ".zip", zf
+    zf.close()
