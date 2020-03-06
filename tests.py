@@ -142,8 +142,8 @@ def spawn_function(email_sender):
 #                test_state=test_state)
 
 if __name__ == '__main__':
-    #es = EmailSender(subject="pytt test")
-    #es.send_email("starting pytt test")
+    es = EmailSender(subject="pytt test")
+    es.send_email("starting pytt test")
     es = None
     nprocs = 2
     distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())

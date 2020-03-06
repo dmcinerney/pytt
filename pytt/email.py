@@ -10,24 +10,25 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 
-def get_email_info(sender_email=None, sender_password=None, receiver_email=None):
-    se = input("Sender email (only gmail for now): ") if sender_email is None else sender_email
+def get_email_info(smtp_server=None, port=None, sender_email=None, sender_password=None, receiver_email=None):
+    ss = input("SMTP Server: ") if smtp_server is None else smtp_server
+    p = input("Port on %s: " % ss) if port is None else port
+    se = input("Sender email (for %s): " % ss) if sender_email is None else sender_email
     sp = getpass("Sender password for %s: " % se) if sender_password is None else sender_password
     re = input("Receiver email: ") if receiver_email is None else receiver_email
-    return se, sp, re
+    return ss, p, se, sp, re
 
 class EmailSender:
-    def __init__(self, sender_email=None, sender_password=None, receiver_email=None, subject="Process Notification from pytt"):
-        self.port = 465
-        self.smtp_server = "smtp.gmail.com"
-        if dist.is_initialized() and (sender_email is None or
+    def __init__(self, smtp_server=None, port=None, sender_email=None, sender_password=None, receiver_email=None, subject="Process Notification from pytt"):
+        if dist.is_initialized() and (smtp_server is None or
+                                      port is None or
+                                      sender_email is None or
                                       sender_password is None or
                                       receiver_email is None):
             raise Exception
-        self.sender_email, self.password, self.receiver_email = get_email_info(
-            sender_email=sender_email, sender_password=sender_password, receiver_email=receiver_email)
+        self.smtp_server, self.port, self.sender_email, self.password, self.receiver_email = get_email_info(
+            smtp_server=smtp_server, port=port, sender_email=sender_email, sender_password=sender_password, receiver_email=receiver_email)
         self.subject = subject
-
 
     # attachments have the form of a generator of (name, filename, file) tuples
     def __call__(self, message, attachments=[], onfinish="Done sending email", onerror="Error: email failed to send!"):
