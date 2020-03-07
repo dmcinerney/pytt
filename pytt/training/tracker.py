@@ -39,8 +39,10 @@ class Tracker:
         self.checkpoint_folder = checkpoint_folder
         if self.copy_checkpoint_every is not None\
            and self.checkpoint_folder is not None:
-            self.saved_checkpoints = 0
-            subprocess.run(["mkdir", os.path.join(self.checkpoint_folder, "saved_checkpoints")])
+            self.saved_checkpoints_folder = os.path.join(
+                self.checkpoint_folder, "saved_checkpoints")
+            if not os.path.exists(self.saved_checkpoints_folder):
+                subprocess.run(["mkdir", self.saved_checkpoints_folder])
         # set up tensorboard
         self.tensorboard_every = tensorboard_every
         if checkpoint_folder is None:
@@ -97,10 +99,9 @@ class Tracker:
             # copy checkpoint
             if self.checkpoint_folder is not None\
                and self.recurring_bool(iteration_info, self.copy_checkpoint_every):
-                logger.log("copying to checkpoint number %i, batches_seen: %i" %
-                    (self.saved_checkpoints,
-                     iteration_info.iterator_info.batches_seen))
-                self.copy_checkpoint_in_thread()
+                logger.log("copying to checkpoint number %i" %
+                    iteration_info.iterator_info.batches_seen)
+                self.copy_checkpoint_in_thread(iteration_info.iterator_info.batches_seen)
                 logger.log("continuing")
             # email
             if self.recurring_bool(iteration_info, self.email_every):
@@ -139,10 +140,10 @@ class Tracker:
 
     def recurring_bool(self, iteration_info, every):
         return every is not None and\
-               (iteration_info.iterator_info.batches_seen
-                % every) == 0\
-               or iteration_info.iterator_info.batches_seen\
-                  == iteration_info.iterator_info.total_batches
+               ((iteration_info.iterator_info.batches_seen
+                 % every) == 0\
+                or iteration_info.iterator_info.batches_seen\
+                   == iteration_info.iterator_info.total_batches)
 
     def enter(self, *args, **kwargs):
         if log_bool():
@@ -160,11 +161,10 @@ class Tracker:
         for writer in self.summary_writers.values():
             writer.flush()
 
-    def copy_checkpoint_in_thread(self):
-        onfinish = lambda : logger.log("done copying to checkpoint number %i" % self.saved_checkpoints)
-        thread = Thread(target=copy_checkpoint, args=[self.checkpoint_folder, self.saved_checkpoints, onfinish])
+    def copy_checkpoint_in_thread(self, batches_seen):
+        onfinish = lambda : logger.log("done copying to checkpoint number %i" % batches_seen)
+        thread = Thread(target=copy_checkpoint, args=[self.checkpoint_folder, batches_seen, onfinish])
         thread.start()
-        self.saved_checkpoints += 1
 
 class ModelWrapper(nn.Module):
     def __init__(self, model, keys):
