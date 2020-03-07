@@ -9,6 +9,16 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+def default_onfinish():
+    logger.log("Done sending email")
+
+def default_onerror(e):
+    logger.log("Error sending email!!!")
+    raise e
+
+def check_attachment_error(e):
+    return isinstance(e, smtplib.SMTPSenderRefused)\
+           and e.smtp_code == 552
 
 def get_email_info(smtp_server=None, port=None, sender_email=None, sender_password=None, receiver_email=None):
     ss = input("SMTP Server: ") if smtp_server is None else smtp_server
@@ -31,13 +41,11 @@ class EmailSender:
         self.subject = subject
 
     # attachments have the form of a generator of (name, filename, file) tuples
-    def __call__(self, message, attachments=[], onfinish="Done sending email", onerror="Error: email failed to send!"):
-        thread = Thread(target=self.send_email, args=[message, attachments, onfinish, onerror])
+    def __call__(self, body, attachments=[], onfinish=default_onfinish, onerror=default_onerror):
+        thread = Thread(target=self.send_email, args=[body, attachments, onfinish, onerror])
         thread.start()
 
-    def send_email(self, message, attachments=[], onfinish="Done sending email", onerror="Error sending email!"):
-        body = message
-
+    def send_email(self, body, attachments=[], onfinish=default_onfinish, onerror=default_onerror):
         # Create a multipart message and set headers
         message = MIMEMultipart()
         message["From"] = self.sender_email
@@ -56,10 +64,9 @@ class EmailSender:
         text = message.as_string()
         try:
             send_email(self.smtp_server, self.port, self.sender_email, self.password, self.receiver_email, text)
+            onfinish()
         except Exception as e:
-            logger.log(onerror)
-            raise e
-        logger.log(onfinish)
+            onerror(e)
 
     def add_attachment(self, message, name, filename, file):
         part = MIMEBase("application", "octet-stream")

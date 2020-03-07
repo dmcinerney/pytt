@@ -13,7 +13,7 @@ from pytt.utils import read_pickle, write_pickle
 from pytt.distributed import collect_obj_on_rank0, log_bool
 from pytt.progress_bar import ProgressBar
 from pytt.logger import logger
-from pytt.email import EmailSender
+from pytt.email import EmailSender, check_attachment_error
 
 class Tracker:
     """
@@ -110,12 +110,29 @@ class Tracker:
                 attachments = [] if len(self.summary_writers) <= 0 else\
                               create_tensorboard_attachment_generator(
                                   self.tensorboard_folder)
+                onfinish = lambda : logger.log(
+                    "Done sending email at %i batches_seen" %
+                    iteration_info.iterator_info.batches_seen)
+                error_message = \
+                    "Error sending email at %i batches_seen!" %\
+                    iteration_info.iterator_info.batches_seen
+                def onerror_base(e):
+                    logger.log(error_message)
+                    raise e
+                def onerror(e):
+                    if check_attachment_error(e):
+                        logger.log(
+                            error_message+
+                            " Trying to send without attachment")
+                        self.email_sender.send_email(
+                            str(iteration_info), onfinish=onfinish,
+                            onerror=onerror_base)
+                    else:
+                        onerror_base(e)
                 self.email_sender(str(iteration_info),
                     attachments=attachments,
-                    onfinish="Done sending email at %i batches_seen" %
-                             iteration_info.iterator_info.batches_seen,
-                    onerror="Error sending email at %i batches_seen!" %
-                            iteration_info.iterator_info.batches_seen)
+                    onfinish=onfinish,
+                    onerror=onerror)
                 logger.log("continuing")
             # update progress bar
             self.pbar.update()
@@ -144,7 +161,7 @@ class Tracker:
             writer.flush()
 
     def copy_checkpoint_in_thread(self):
-        onfinish = "done copying to checkpoint number %i" % self.saved_checkpoints
+        onfinish = lambda : logger.log("done copying to checkpoint number %i" % self.saved_checkpoints)
         thread = Thread(target=copy_checkpoint, args=[self.checkpoint_folder, self.saved_checkpoints, onfinish])
         thread.start()
         self.saved_checkpoints += 1
@@ -171,18 +188,18 @@ def create_tensorboard_attachment_generator(dir):
 
     # create zipfile
     zf = tempfile.TemporaryFile(prefix=basename, suffix='.zip')
-    zip = zipfile.ZipFile(zf, 'w')
+    zip = zipfile.ZipFile(zf, 'w', compression=zipfile.ZIP_DEFLATED)
     zipdir(dir, zip)
     zip.close()
     zf.seek(0)
     yield basename, basename + ".zip", zf
     zf.close()
 
-def copy_checkpoint(checkpoint, checkpoint_num, onfinish="done copying checkpoint"):
+def copy_checkpoint(checkpoint, checkpoint_num, onfinish=lambda : logger.log("done copying checkpoint")):
     stuff = set(os.listdir(checkpoint))
     stuff.remove('saved_checkpoints')
     saved_checkpoint = os.path.join(checkpoint, 'saved_checkpoints', 'checkpoint%i' % checkpoint_num)
     subprocess.run(["mkdir", saved_checkpoint])
     for x in stuff:
         subprocess.run(["cp", "-r", os.path.join(checkpoint, x), saved_checkpoint])
-    logger.log(onfinish)
+    onfinish()

@@ -29,13 +29,13 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel as LDDP
 from torch.optim import Adam
 from pytt.training.trainer import Trainer
-from pytt.training.tracker import Tracker
+from pytt.training.tracker import Tracker, create_tensorboard_attachment_generator
 from pytt.logger import logger
 from pytt.training.training_controller import AbstractTrainingController
 from pytt.testing.tester import Tester
 from pytt.batching.postprocessor import StandardPostprocessor, StandardOutputBatch
 #from pytt.setup import Setup
-from pytt.email import EmailSender
+from pytt.email import EmailSender, check_attachment_error
 
 class Model(nn.Module):
     def __init__(self):
@@ -142,8 +142,16 @@ def spawn_function(email_sender):
 #                test_state=test_state)
 
 if __name__ == '__main__':
-    es = EmailSender(subject="pytt test")
-    es.send_email("starting pytt test")
+    es = EmailSender(subject="pytt test", smtp_server='smtp.gmail.com', port=465, sender_email='jeredspython@gmail.com', receiver_email='jered.mcinerney@gmail.com')
+    def onerror(e):
+        logger.log(
+            "Error sending email")
+        if check_attachment_error(e):
+            logger.log("Trying to send without attachment")
+            es.send_email("email2")
+        else:
+            raise e
+    es.send_email("starting pytt test", onerror=onerror, attachments=create_tensorboard_attachment_generator('/home/jered/Documents/projects/ehr-extraction-models/checkpoints/code_supervision_unfrozen2/tensorboard'))
     es = None
     nprocs = 2
     distributed_spawn_function = distributed_wrapper(spawn_function, nprocs, random_state=get_random_state())
